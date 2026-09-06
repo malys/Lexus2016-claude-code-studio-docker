@@ -105,7 +105,14 @@ RUN mkdir -p \
       /home/node/.local/share/openmemory \
       /app/data \
       /app/workspace \
+      /app/skills \
+    && chown -R node:node \
+      /home/node \
+      /app/data \
+      /app/workspace \
       /app/skills
+
+USER node
 
 # tokless installer: upstream documents the curl installer and automatic agent
 # detection/selection. Only Claude and Codex are installed in this image.
