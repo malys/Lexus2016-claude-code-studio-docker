@@ -18,6 +18,7 @@ on:
   repository_dispatch:
     types: [ccs-release]
   push:
+    branches: [main]
     tags:
       - "v*.*.*"
 

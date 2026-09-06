@@ -21,14 +21,12 @@ services:
       - TZ=UTC
       # - DATABASE_URL=postgres://studio:change_me@postgres:5432/studio
     volumes:  
-      - .ccs/config/claude:/home/bun/.claude
-      - .ccs/config/codex:/home/bun/.codex
-      - .ccs/config/user-config:/home/bun/.config
-      - .ccs/data/app:/app/data
-      - .ccs/data/workspace:/app/workspace
-      - .ccs/data/skills:/app/skills
-      - .ccs/data/openmemory:/home/bun/.openmemory
-      - .ccs/data/openmemory-share:/home/bun/.local/share/openmemory
-
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./ccs/config/claude:/home/bun/.claude
+      - ./ccs/config/codex:/home/bun/.codex
+      - ./ccs/config/user-config:/home/bun/.config
+      - ./ccs/data/app:/app/data
+      - ./ccs/data/workspace:/app/workspace
+      - ./ccs/data/skills:/app/skills
+      - ./ccs/data/openmemory:/home/bun/.openmemory
+      - ./ccs/data/openmemory-share:/home/bun/.local/share/openmemory
     restart: unless-stopped
