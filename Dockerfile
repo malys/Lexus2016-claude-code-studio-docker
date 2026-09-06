@@ -116,7 +116,7 @@ USER node
 # detection/selection. Only Claude and Codex are installed in this image.
 ARG TOKLESS_REF
 RUN curl -fsSL "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" | bash \
-    && tokless --agents claude,codex
+    && tokless --agents claude,codex --yes
 
 # OpenMemory is currently distributed as a source checkout and runs under Bun.
 # Install Bun, clone the selected OpenMemory ref, install production runtime
