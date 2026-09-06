@@ -8,7 +8,7 @@ version: '3.8'
 services:
   code-studio:
     # Either set an image or uncomment the build section to build from local Dockerfile
-    # image: your-registry/claude-code-studio:latest
+    # image: malys/claude-code-studio:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -20,25 +20,15 @@ services:
       - NODE_ENV=production
       - TZ=UTC
       # - DATABASE_URL=postgres://studio:change_me@postgres:5432/studio
-    volumes:
-      - ./config:/app/config:rw        # local config (create ./config to persist)
-      - ./data:/app/data:rw            # persistent app data
-      - ./workspace:/app/workspace:rw  # user workspace / projects
-      - /var/run/docker.sock:/var/run/docker.sock # optional: allow Docker access from container (remove if not needed)
-    restart: unless-stopped
+    volumes:  
+      - .ccs/config/claude:/home/bun/.claude
+      - .ccs/config/codex:/home/bun/.codex
+      - .ccs/config/user-config:/home/bun/.config
+      - .ccs/data/app:/app/data
+      - .ccs/data/workspace:/app/workspace
+      - .ccs/data/skills:/app/skills
+      - .ccs/data/openmemory:/home/bun/.openmemory
+      - .ccs/data/openmemory-share:/home/bun/.local/share/openmemory
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: studio
-      POSTGRES_PASSWORD: change_me
-      POSTGRES_DB: studio
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432" # expose only if you need host access; remove to limit to the compose network
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
-
-volumes:
-  db-data:
-    name: lexus2016_pgdata

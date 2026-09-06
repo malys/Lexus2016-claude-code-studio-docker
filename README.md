@@ -34,7 +34,7 @@ docker run -d \
   -v ccs-codex:/home/node/.codex \
   -v ccs-openmemory:/home/node/.openmemory \
   -v ccs-openmemory-store:/home/node/.local/share/openmemory \
-  ghcr.io/<owner>/claude-code-studio:full
+  ghcr.io/malys/claude-code-studio:full
 ```
 
 The image runs as the `node` user. Credentials are not baked into the image; authenticate the CLIs at runtime using the mechanisms documented by the respective providers.
