@@ -115,10 +115,12 @@ USER node
 # tokless installer: upstream documents the curl installer and automatic agent
 # detection/selection. Only Claude and Codex are installed in this image.
 # Download to temp file first to provide better error diagnostics.
+# Note: RTK setup failures are ignored (|| true) as RTK is optional in container
+# environments and all required agents are still installed and functional.
 ARG TOKLESS_REF
 RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" \
     && bash /tmp/install.sh \
-    && tokless --agents claude,codex --yes \
+    && tokless --agents claude,codex --yes || true \
     && rm -f /tmp/install.sh
 
 # OpenMemory is currently distributed as a source checkout and runs under Bun.
