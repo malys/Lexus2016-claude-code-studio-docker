@@ -105,9 +105,7 @@ RUN mkdir -p \
       /app/skills \
     && chown -R bun:bun \
       /home/bun \
-      /app/data \
-      /app/workspace \
-      /app/skills
+      /app/
 
 # Switch to bun before running user-scoped installers.
 USER bun

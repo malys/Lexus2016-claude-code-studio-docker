@@ -8,18 +8,17 @@ version: '3.8'
 services:
   code-studio:
     # Either set an image or uncomment the build section to build from local Dockerfile
-    # image: malys/claude-code-studio:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: malys/claude-code-studio:latest
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
     container_name: claude-code-studio
     ports:
       - "3000:3000"   # change the host port as needed
     env_file: .env     # optional: create a .env file next to docker-compose.yml to keep secrets out of this file
     environment:
       - NODE_ENV=production
-      - TZ=UTC
-      # - DATABASE_URL=postgres://studio:change_me@postgres:5432/studio
+      - TZ=Europe/Paris
     volumes:  
       - ./ccs/config/claude:/home/bun/.claude
       - ./ccs/config/codex:/home/bun/.codex
