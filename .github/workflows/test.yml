@@ -1,0 +1,42 @@
+name: Docker smoke test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ccs-full:test
+          build-args: |
+            CCS_REF=main
+            CLAUDE_CODE_VERSION=latest
+            CODEX_VERSION=latest
+            TOKLESS_REF=main
+            OPENMEMORY_REF=main
+          cache-from: type=gha,scope=ccs-full-test
+          cache-to: type=gha,mode=max,scope=ccs-full-test
+      - name: Verify image
+        run: |
+          docker run --rm ccs-full:test bash -lc '
+            set -e
+            command -v claude
+            command -v codex
+            command -v tokless
+            command -v openmemory
+            command -v tmux
+            test -f /app/server.js
+          '

@@ -1,0 +1,120 @@
+name: Build and publish full CCS image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ccs_ref:
+        description: "CCS git ref to build"
+        required: false
+        default: "main"
+        type: string
+      image_tag:
+        description: "Optional extra immutable tag (for example full-v7.16.2)"
+        required: false
+        default: ""
+        type: string
+  schedule:
+    - cron: "20 3 * * 1"
+  repository_dispatch:
+    types: [ccs-release]
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/claude-code-studio
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout image repository
+        uses: actions/checkout@v4
+
+      - name: Resolve CCS ref
+        id: ccs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref="main"
+          if [[ -n "${{ github.event.inputs.ccs_ref || '' }}" ]]; then
+            ref="${{ github.event.inputs.ccs_ref }}"
+          elif [[ "${{ github.event_name }}" == "repository_dispatch" ]] && [[ -n "${{ github.event.client_payload.ccs_ref || '' }}" ]]; then
+            ref="${{ github.event.client_payload.ccs_ref }}"
+          elif [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            ref="${GITHUB_REF_NAME}"
+          fi
+
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "CCS ref: ${ref}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=full
+            type=raw,value=latest-full
+            type=raw,value=full-v${{ github.event.client_payload.version }},enable=${{ github.event_name == 'repository_dispatch' && github.event.client_payload.version != '' }}
+            type=raw,value=full-${{ github.ref_name }},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=raw,value=${{ github.event.inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CCS_REF=${{ steps.ccs.outputs.ref }}
+            CLAUDE_CODE_VERSION=latest
+            CODEX_VERSION=latest
+            TOKLESS_REF=main
+            OPENMEMORY_REF=main
+          cache-from: type=gha,scope=ccs-full
+          cache-to: type=gha,mode=max,scope=ccs-full
+
+      - name: Inspect manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:full"
+
+      - name: Resolve upstream versions
+        shell: bash
+        run: |
+          {
+            echo "## Build summary"
+            echo
+            echo "- Image: \\`${REGISTRY}/${IMAGE_NAME}:full\\`"
+            echo "- CCS ref: \\`${{ steps.ccs.outputs.ref }}\\`"
+            echo "- Claude Code: latest at build time"
+            echo "- Codex CLI: latest at build time"
+            echo "- tokless: main at build time"
+            echo "- OpenMemory: main at build time"
+            echo "- Platforms: linux/amd64, linux/arm64"
+          } >> "$GITHUB_STEP_SUMMARY"
