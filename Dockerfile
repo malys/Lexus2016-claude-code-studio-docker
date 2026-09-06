@@ -152,16 +152,7 @@ RUN command -v claude \
     && command -v tmux \
     && test -f /app/server.js
 
-VOLUME [
-  "/app/data",
-  "/app/workspace",
-  "/app/skills",
-  "/home/node/.claude",
-  "/home/node/.codex",
-  "/home/node/.config",
-  "/home/node/.openmemory",
-  "/home/node/.local/share/openmemory"
-]
+VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/node/.claude", "/home/node/.codex", "/home/node/.config", "/home/node/.openmemory", "/home/node/.local/share/openmemory"]
 
 EXPOSE 3000
 
