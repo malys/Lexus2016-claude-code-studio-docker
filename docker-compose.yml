@@ -1,0 +1,44 @@
+# Example docker-compose.yml for this repository
+# - Replace image or use the build section below to build from the repo's Dockerfile
+# - Volumes map local directories for config, persistent data and workspaces.
+# - Customize ports, environment and volumes as needed before running `docker compose up -d`.
+
+version: '3.8'
+
+services:
+  code-studio:
+    # Either set an image or uncomment the build section to build from local Dockerfile
+    # image: your-registry/claude-code-studio:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-code-studio
+    ports:
+      - "3000:3000"   # change the host port as needed
+    env_file: .env     # optional: create a .env file next to docker-compose.yml to keep secrets out of this file
+    environment:
+      - NODE_ENV=production
+      - TZ=UTC
+      # - DATABASE_URL=postgres://studio:change_me@postgres:5432/studio
+    volumes:
+      - ./config:/app/config:rw        # local config (create ./config to persist)
+      - ./data:/app/data:rw            # persistent app data
+      - ./workspace:/app/workspace:rw  # user workspace / projects
+      - /var/run/docker.sock:/var/run/docker.sock # optional: allow Docker access from container (remove if not needed)
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: studio
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # expose only if you need host access; remove to limit to the compose network
+    restart: unless-stopped
+
+volumes:
+  db-data:
+    name: lexus2016_pgdata
