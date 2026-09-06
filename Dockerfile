@@ -90,10 +90,7 @@ RUN npm install -g \
       @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 
-# Switch to node before running user-scoped installers.
-USER node
-
-# User-scoped CLI/config directories.
+# Prepare user-scoped directories while still root so ownership can be set.
 RUN mkdir -p \
       /home/node/.local/bin \
       /home/node/.claude/skills \
@@ -112,6 +109,7 @@ RUN mkdir -p \
       /app/workspace \
       /app/skills
 
+# Switch to node before running user-scoped installers.
 USER node
 
 # tokless installer: upstream documents the curl installer and automatic agent
