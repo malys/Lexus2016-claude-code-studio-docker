@@ -118,7 +118,7 @@ USER bun
 ARG TOKLESS_REF
 RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" \
     && bash /tmp/install.sh \
-    && tokless --agents claude,codex --yes \
+    && tokless --agents claude,codex --yes || true \
     && rm -f /tmp/install.sh
 
 # OpenMemory is currently distributed as a source checkout and runs under Bun.

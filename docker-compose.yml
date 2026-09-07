@@ -8,7 +8,7 @@ version: '3.8'
 services:
   code-studio:
     # Either set an image or uncomment the build section to build from local Dockerfile
-    image: malys/claude-code-studio:latest
+    image: ghcr.io/malys/claude-code-studio:latest-full
     #build:
     #  context: .
     #  dockerfile: Dockerfile
