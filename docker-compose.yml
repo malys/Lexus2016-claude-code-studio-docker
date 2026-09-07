@@ -15,17 +15,50 @@ services:
     container_name: claude-code-studio
     ports:
       - "3000:3000"   # change the host port as needed
-    env_file: .env     # optional: create a .env file next to docker-compose.yml to keep secrets out of this file
+    env_file:
+      - path: .env      # optional: create a .env file next to docker-compose.yml to keep secrets out of this file
+        required: false
     environment:
       - NODE_ENV=production
       - TZ=Europe/Paris
-    volumes:  
-      - ./ccs/config/claude:/home/bun/.claude
-      - ./ccs/config/codex:/home/bun/.codex
-      - ./ccs/config/user-config:/home/bun/.config
+      # /app is an image layer: without these, settings saved through the CCS UI
+      # (MCP servers, skills, terminal config) are lost on every recreate/update.
+      - CCS_CONFIG_PATH=/app/data/config.json
+      - CCS_ENV_PATH=/app/data/.env
+      # Headless auth for Claude on a Pro/Max subscription (no API billing):
+      # on a machine with a browser, logged into that subscription, run
+      # `claude setup-token` and paste the printed token here. It MUST start
+      # with sk-ant-oat01- — any other value is rejected and the `claude`
+      # subprocess falls back to asking for /login inside the chat, which is
+      # what a malformed/garbled token looks like from the outside.
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Alternative if you have separate API billing instead of a subscription
+      # (unused/ignored by the `claude` CLI when the token above is set).
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      # Headless auth for Codex; codex reads this directly. codex has no
+      # portable subscription-token equivalent to claude setup-token — for a
+      # ChatGPT Plus/Pro subscription see the login note the entrypoint prints
+      # on startup instead.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
       - ./ccs/data/app:/app/data
       - ./ccs/data/workspace:/app/workspace
-      - ./ccs/data/skills:/app/skills
+      # Named volumes below: Docker seeds a named volume from the image's
+      # baked-in content (tokless skills, OpenMemory source checkout) the
+      # first time it's mounted. A bind mount never gets that seeding — an
+      # empty host folder just shadows it, which is why tokless skills don't
+      # show up in CCS when these are bind-mounted instead.
+      - claude-skills:/app/skills
+      - claude-home:/home/bun/.claude
+      - codex-home:/home/bun/.codex
+      - openmemory-share:/home/bun/.local/share/openmemory
+      - ./ccs/config/user-config:/home/bun/.config
       - ./ccs/data/openmemory:/home/bun/.openmemory
-      - ./ccs/data/openmemory-share:/home/bun/.local/share/openmemory
     restart: unless-stopped
+
+volumes:
+  claude-skills:
+  claude-home:
+  codex-home:
+  openmemory-share:

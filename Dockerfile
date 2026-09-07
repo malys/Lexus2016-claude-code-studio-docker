@@ -73,6 +73,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     openssh-client \
     procps \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the complete CCS runtime tree. The builder already installed production
@@ -121,6 +122,17 @@ RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tok
     && tokless --agents claude,codex --yes || true \
     && rm -f /tmp/install.sh
 
+# tokless's installer skips a TTY-dependent setup step in an unattended
+# `docker build` (it logs "/dev/tty: No such device or address"), so skills
+# bundled inside the packages it installs — e.g. context-mode's ctx-search,
+# ctx-index, etc. — are left under node_modules and never linked into
+# ~/.claude/skills, where Claude Code (and the mirror step below) look for
+# them. Link them in ourselves.
+RUN for pkg_skills in /home/bun/.local/lib/node_modules/*/skills/*; do \
+      [ -d "$pkg_skills" ] || continue; \
+      ln -s "$pkg_skills" "/home/bun/.claude/skills/$(basename "$pkg_skills")"; \
+    done 2>/dev/null || true
+
 # OpenMemory is currently distributed as a source checkout and runs under Bun.
 # Install Bun, clone the selected OpenMemory ref, install production runtime
 # dependencies, and create the same launcher shape as the upstream installer.
@@ -164,4 +176,13 @@ VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/hom
 
 EXPOSE 3000
 
+# The container starts as root so the entrypoint can fix ownership of bind-mounted
+# host volumes (Docker creates missing bind-mount dirs as root) before dropping to
+# bun via gosu. USER bun above only scoped the preceding build-time RUN steps.
+USER root
+
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["bun", "server.js"]
