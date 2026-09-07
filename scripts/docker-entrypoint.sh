@@ -29,8 +29,12 @@ if [ ! -f /home/bun/.claude/.credentials.json ] \
 fi
 if [ ! -f /home/bun/.codex/auth.json ] && [ -z "${OPENAI_API_KEY:-}" ]; then
   echo "[ccs] Codex: not authenticated." >&2
-  echo "[ccs]   Run: docker exec -it claude-code-studio codex login" >&2
-  echo "[ccs]   Remote host: tunnel its callback port first, e.g. ssh -L 1455:localhost:1455 <host>, then run the exec above." >&2
+  echo "[ccs]   Run: docker exec -it claude-code-studio codex login --device-auth" >&2
+  echo "[ccs]   Enter the printed code at https://auth.openai.com/codex/device from any browser (valid 15 min)." >&2
+  echo "[ccs]   Requires device-code sign-in enabled on your ChatGPT account/workspace. If rejected, fall back to:" >&2
+  echo "[ccs]     docker exec -it claude-code-studio codex login   (needs a tunnel: ssh -L 1455:localhost:1455 <host>)" >&2
+  echo "[ccs]   or copy an already-authenticated ~/.codex/auth.json from a trusted machine into the codex-home volume" >&2
+  echo "[ccs]   (only if that file is missing here — codex auto-refreshes it, don't overwrite a live one)." >&2
 fi
 
 # Preserve the upstream oven/bun entrypoint behavior: a bare script path still

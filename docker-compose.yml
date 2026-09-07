@@ -38,8 +38,11 @@ services:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
       # Headless auth for Codex; codex reads this directly. codex has no
       # portable subscription-token equivalent to claude setup-token — for a
-      # ChatGPT Plus/Pro subscription see the login note the entrypoint prints
-      # on startup instead.
+      # ChatGPT Plus/Pro subscription, run
+      # `docker exec -it claude-code-studio codex login --device-auth`
+      # and enter the code at https://auth.openai.com/codex/device (needs
+      # device-code sign-in enabled on the account/workspace). See the
+      # entrypoint's startup log for the fallback if that's not enabled.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
       - ./ccs/data/app:/app/data
