@@ -10,10 +10,12 @@
 # shadow that content with an empty host directory.
 set -e
 
-chown -R bun:bun \
-  /app/data /app/workspace /app/skills \
-  /home/bun/.claude /home/bun/.codex /home/bun/.config \
-  /home/bun/.openmemory /home/bun/.local/share/openmemory
+if [ "$(id -u)" = "0" ]; then
+  chown -R bun:bun \
+    /app/data /app/workspace /app/skills \
+    /home/bun/.claude /home/bun/.codex /home/bun/.config \
+    /home/bun/.openmemory /home/bun/.local/share/openmemory
+fi
 
 # Login reminders. A real claude setup-token value always starts with
 # sk-ant-oat01- — anything else is rejected by the `claude` CLI, which then
@@ -43,4 +45,8 @@ if [ "${1#-}" != "${1}" ] || [ -z "$(command -v "${1}" 2>/dev/null)" ] || { [ -f
   set -- /usr/local/bin/bun "$@"
 fi
 
-exec gosu bun "$@"
+if [ "$(id -u)" = "0" ]; then
+  exec gosu bun "$@"
+fi
+
+exec "$@"

@@ -14,3 +14,10 @@ docker run --rm "$IMAGE" bash -lc '
   test "$(id -u)" != "0"
   echo "Smoke test passed"
 '
+
+docker run --rm --user bun "$IMAGE" bash -lc '
+  set -e
+  test "$(id -u)" != "0"
+  command -v codex
+  echo "Non-root entrypoint test passed"
+'
