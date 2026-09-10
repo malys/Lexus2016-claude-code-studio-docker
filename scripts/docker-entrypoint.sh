@@ -81,6 +81,48 @@ if ! configure_ccs_mcp; then
   echo "[ccs] MCP: invalid CCS config; ProjectMem and Headroom not added." >&2
 fi
 
+# CCS launches `claude` inside tmux with stdio ignored, so any first-run prompt
+# (theme picker, folder trust, bypass-permissions disclaimer) wedges the pane
+# with no visible output and CCS reports only "failed to start tmux session for
+# interactive engine". Pre-accept the three prompts. The trust flag on WORKDIR
+# is inherited by every project directory below it.
+configure_claude_onboarding() {
+  workdir="${WORKDIR:-/app/workspace}"
+  claude_config=/home/bun/.claude.json
+  claude_settings=/home/bun/.claude/settings.json
+
+  [ -f "$claude_config" ] || printf '{}\n' > "$claude_config"
+  [ -f "$claude_settings" ] || printf '{}\n' > "$claude_settings"
+
+  config_tmp="$(mktemp "${claude_config}.tmp.XXXXXX")"
+  if jq --arg dir "$workdir" '
+    .hasCompletedOnboarding = true |
+    .theme //= "dark" |
+    .projects[$dir].hasTrustDialogAccepted = true
+  ' "$claude_config" > "$config_tmp"; then
+    mv "$config_tmp" "$claude_config"
+  else
+    rm -f "$config_tmp"
+    return 1
+  fi
+
+  settings_tmp="$(mktemp "${claude_settings}.tmp.XXXXXX")"
+  if jq '.skipDangerousModePermissionPrompt = true' "$claude_settings" > "$settings_tmp"; then
+    mv "$settings_tmp" "$claude_settings"
+  else
+    rm -f "$settings_tmp"
+    return 1
+  fi
+
+  if [ "$(id -u)" = "0" ]; then
+    chown bun:bun "$claude_config" "$claude_settings"
+  fi
+}
+
+if ! configure_claude_onboarding; then
+  echo "[ccs] Claude: first-run prompts not pre-accepted; interactive sessions may hang." >&2
+fi
+
 if ! run_as_bun codex mcp get projectmem >/dev/null 2>&1; then
   if ! run_as_bun codex mcp add projectmem -- \
     /opt/agent-tools/bin/python -m projectmem.mcp_server >/dev/null; then

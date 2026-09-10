@@ -20,6 +20,9 @@ docker run --rm "$IMAGE" bash -lc '
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /app/data/config.json >/dev/null
   codex mcp get projectmem >/dev/null
   codex mcp get headroom >/dev/null
+  jq -e '\''.hasCompletedOnboarding == true'\'' /home/bun/.claude.json >/dev/null
+  jq -e '\''.projects["/app/workspace"].hasTrustDialogAccepted == true'\'' /home/bun/.claude.json >/dev/null
+  jq -e '\''.skipDangerousModePermissionPrompt == true'\'' /home/bun/.claude/settings.json >/dev/null
   test "$(id -u)" != "0"
   echo "Smoke test passed"
 '
