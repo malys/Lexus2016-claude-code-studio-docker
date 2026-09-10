@@ -9,6 +9,8 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG CODEX_VERSION=latest
 ARG TOKLESS_REF=main
 ARG OPENMEMORY_REF=main
+ARG PROJECTMEM_VERSION=0.3.2
+ARG HEADROOM_VERSION=0.37.0
 
 # -----------------------------------------------------------------------------
 # Builder: fetch and build CCS from the upstream repository.
@@ -55,12 +57,16 @@ ARG CLAUDE_CODE_VERSION
 ARG CODEX_VERSION
 ARG TOKLESS_REF
 ARG OPENMEMORY_REF
+ARG PROJECTMEM_VERSION
+ARG HEADROOM_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV WORKDIR=/app/workspace
+ENV CCS_CONFIG_PATH=/app/data/config.json
+ENV CCS_ENV_PATH=/app/data/.env
 ENV HOME=/home/bun
 ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}
 
@@ -71,9 +77,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     tmux \
     ripgrep \
-    openssh-client \
-    procps \
-    gosu \
+      openssh-client \
+      procps \
+      gosu \
+      python3 \
+      python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the complete CCS runtime tree. The builder already installed production
@@ -90,10 +98,18 @@ RUN bun install -g \
       @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
       @openai/codex@${CODEX_VERSION}
 
+# Local stdio MCP servers. Keep them in an image-owned venv so persistent
+# user config volumes cannot hide or replace their runtimes.
+RUN python3 -m venv /opt/agent-tools \
+    && /opt/agent-tools/bin/pip install --no-cache-dir \
+         "projectmem==${PROJECTMEM_VERSION}" \
+         "headroom-ai[mcp]==${HEADROOM_VERSION}"
+
 
 # Prepare user-scoped directories while still root so ownership can be set.
 RUN mkdir -p \
       /home/bun/.local/bin \
+      /home/bun/.local/lib \
       /home/bun/.claude/skills \
       /home/bun/.codex \
       /home/bun/.bun \
@@ -101,6 +117,8 @@ RUN mkdir -p \
       /home/bun/.cache \
       /home/bun/.openmemory \
       /home/bun/.local/share/openmemory \
+      /home/bun/.projectmem \
+      /home/bun/.headroom \
       /app/data \
       /app/workspace \
       /app/skills \
@@ -157,14 +175,14 @@ RUN codex plugin marketplace add DietrichGebert/ponytail \
 ARG OPENMEMORY_REF
 RUN git clone --depth 1 --branch "${OPENMEMORY_REF}" \
          https://github.com/mem0ai/openmemory.git \
-         /home/bun/.local/share/openmemory/src \
-    && cd /home/bun/.local/share/openmemory/src/cli \
+         /home/bun/.local/lib/openmemory/src \
+    && cd /home/bun/.local/lib/openmemory/src/cli \
     && bun install --production \
     && printf '%s\n' \
          '#!/bin/sh' \
          '# Managed by the CCS full image.' \
-         'cd "$HOME/.local/share/openmemory/src/cli"' \
-         'exec "$HOME/.bun/bin/bun" src/cli.ts "$@"' \
+         'cd "$HOME/.local/lib/openmemory/src/cli"' \
+         'exec /usr/local/bin/bun src/cli.ts "$@"' \
          > /home/bun/.local/bin/openmemory \
     && chmod 0755 /home/bun/.local/bin/openmemory \
     && bun pm cache rm
@@ -188,9 +206,11 @@ RUN command -v claude \
     && command -v tokless \
     && command -v openmemory \
     && command -v tmux \
+    && /opt/agent-tools/bin/pjm --version \
+    && /opt/agent-tools/bin/headroom --version \
     && test -f /app/server.js
 
-VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/home/bun/.codex", "/home/bun/.config", "/home/bun/.openmemory", "/home/bun/.local/share/openmemory"]
+VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/home/bun/.codex", "/home/bun/.config", "/home/bun/.openmemory", "/home/bun/.local/share/openmemory", "/home/bun/.projectmem", "/home/bun/.headroom"]
 
 EXPOSE 3000
 

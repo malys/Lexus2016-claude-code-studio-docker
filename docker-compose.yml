@@ -47,17 +47,17 @@ services:
     volumes:
       - ./ccs/data/app:/app/data
       - ./ccs/data/workspace:/app/workspace
-      # Named volumes below: Docker seeds a named volume from the image's
-      # baked-in content (tokless skills, OpenMemory source checkout) the
-      # first time it's mounted. A bind mount never gets that seeding — an
-      # empty host folder just shadows it, which is why tokless skills don't
-      # show up in CCS when these are bind-mounted instead.
+      # Named skill volumes below are seeded from the image on first use.
+      # A bind mount never gets that seeding, so an empty host folder would
+      # hide the tokless skills baked into the image.
       - claude-skills:/app/skills
       - claude-home:/home/bun/.claude
       - codex-home:/home/bun/.codex
       - openmemory-share:/home/bun/.local/share/openmemory
       - ./ccs/config/user-config:/home/bun/.config
       - ./ccs/data/openmemory:/home/bun/.openmemory
+      - ./ccs/data/projectmem:/home/bun/.projectmem
+      - ./ccs/data/headroom:/home/bun/.headroom
     restart: unless-stopped
 
 volumes:

@@ -30,14 +30,17 @@ docker run -d \
   -v ccs-data:/app/data \
   -v ccs-workspace:/app/workspace \
   -v ccs-skills:/app/skills \
-  -v ccs-claude:/home/node/.claude \
-  -v ccs-codex:/home/node/.codex \
-  -v ccs-openmemory:/home/node/.openmemory \
-  -v ccs-openmemory-store:/home/node/.local/share/openmemory \
+  -v ccs-claude:/home/bun/.claude \
+  -v ccs-codex:/home/bun/.codex \
+  -v ccs-config:/home/bun/.config \
+  -v ccs-openmemory:/home/bun/.openmemory \
+  -v ccs-openmemory-store:/home/bun/.local/share/openmemory \
+  -v ccs-projectmem:/home/bun/.projectmem \
+  -v ccs-headroom:/home/bun/.headroom \
   ghcr.io/malys/claude-code-studio:full
 ```
 
-The image runs as the `node` user. Credentials are not baked into the image; authenticate the CLIs at runtime using the mechanisms documented by the respective providers.
+The image runs as the `bun` user. Credentials are not baked into the image; authenticate the CLIs at runtime using the mechanisms documented by the respective providers.
 
 ## What is included
 
@@ -46,6 +49,8 @@ The image runs as the `node` user. Credentials are not baked into the image; aut
 - `tmux` for terminal/subscription engine support
 - `tokless` configured for Claude Code and Codex
 - OpenMemory CLI for Claude Code/Codex session portability
+- ProjectMem MCP for project-scoped persistent memory
+- Headroom MCP for on-demand context compression and retrieval
 - CCS itself, fetched from the upstream `Lexus2016/claude-code-studio` repository
 
 ## Persistent paths
@@ -55,11 +60,19 @@ The image runs as the `node` user. Credentials are not baked into the image; aut
 | `/app/data` | CCS application data and config |
 | `/app/workspace` | User workspaces/projects |
 | `/app/skills` | CCS skill directory |
-| `/home/node/.claude` | Claude state/auth/skills |
-| `/home/node/.codex` | Codex state/auth/config |
-| `/home/node/.config` | User config used by CLI tooling |
-| `/home/node/.openmemory` | OpenMemory state |
-| `/home/node/.local/share/openmemory` | OpenMemory source/runtime data |
+| `/home/bun/.claude` | Claude state/auth/skills |
+| `/home/bun/.codex` | Codex state/auth/config |
+| `/home/bun/.config` | User config used by CLI tooling |
+| `/home/bun/.openmemory` | OpenMemory state |
+| `/home/bun/.local/share/openmemory` | OpenMemory ledger/runtime state |
+| `/home/bun/.projectmem` | ProjectMem project registry |
+| `/home/bun/.headroom` | Headroom MCP state and retrieval cache |
+
+ProjectMem and Headroom are added idempotently to CCS and Codex MCP config at
+container startup. Existing entries with the same names are preserved. Headroom
+runs in MCP-only mode: no proxy, dashboard, or extra network port. ProjectMem
+does not modify repositories automatically; run `pjm init` explicitly inside a
+workspace when wanted.
 
 ## CI/CD
 
@@ -93,6 +106,8 @@ docker build \
   --build-arg CODEX_VERSION=latest \
   --build-arg TOKLESS_REF=main \
   --build-arg OPENMEMORY_REF=main \
+  --build-arg PROJECTMEM_VERSION=0.3.2 \
+  --build-arg HEADROOM_VERSION=0.37.0 \
   -t ccs-full:local .
 ```
 

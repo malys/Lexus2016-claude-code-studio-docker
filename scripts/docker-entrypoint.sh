@@ -3,18 +3,91 @@
 # volumes — Docker creates missing bind-mount directories as root:root, which
 # the non-root `bun` user then can't write to (config, auth state, workspace) —
 # then drops to bun for the real process. Prefer named volumes for
-# /app/skills, /home/bun/.claude, /home/bun/.codex and
-# /home/bun/.local/share/openmemory when possible: Docker seeds a *named*
-# volume from the image's baked-in content (tokless skills, OpenMemory
-# source) on first use, but never does this for bind mounts, which just
-# shadow that content with an empty host directory.
+# /app/skills, /home/bun/.claude and /home/bun/.codex when possible: Docker
+# seeds a *named* volume from the image's baked-in content on first use, but
+# never does this for bind mounts, which hide that content with an empty host
+# directory. OpenMemory code lives outside its persistent data volume.
 set -e
 
 if [ "$(id -u)" = "0" ]; then
   chown -R bun:bun \
     /app/data /app/workspace /app/skills \
     /home/bun/.claude /home/bun/.codex /home/bun/.config \
-    /home/bun/.openmemory /home/bun/.local/share/openmemory
+    /home/bun/.openmemory /home/bun/.local/share/openmemory \
+    /home/bun/.projectmem /home/bun/.headroom
+fi
+
+run_as_bun() {
+  if [ "$(id -u)" = "0" ]; then
+    gosu bun "$@"
+  else
+    "$@"
+  fi
+}
+
+configure_ccs_mcp() {
+  config_path="${CCS_CONFIG_PATH:-/app/data/config.json}"
+  mkdir -p "$(dirname "$config_path")"
+
+  if [ ! -f "$config_path" ]; then
+    if [ -f /app/config.example.json ]; then
+      cp /app/config.example.json "$config_path"
+    else
+      printf '{}\n' > "$config_path"
+    fi
+  fi
+
+  config_tmp="$(mktemp "${config_path}.tmp.XXXXXX")"
+  if jq '
+    .mcpServers //= {} |
+    .mcpServers.projectmem //= {
+      "type": "stdio",
+      "command": "/opt/agent-tools/bin/python",
+      "args": ["-m", "projectmem.mcp_server"]
+    } |
+    .mcpServers.headroom //= {
+      "type": "stdio",
+      "command": "/opt/agent-tools/bin/headroom",
+      "args": ["mcp", "serve"]
+    }
+  ' "$config_path" > "$config_tmp"; then
+    chmod 0600 "$config_tmp"
+    mv "$config_tmp" "$config_path"
+    if [ "$(id -u)" = "0" ]; then
+      chown bun:bun "$config_path"
+    fi
+  else
+    rm -f "$config_tmp"
+    return 1
+  fi
+}
+
+if ! configure_ccs_mcp; then
+  echo "[ccs] MCP: invalid CCS config; ProjectMem and Headroom not added." >&2
+fi
+
+if ! run_as_bun codex mcp get projectmem >/dev/null 2>&1; then
+  if ! run_as_bun codex mcp add projectmem -- \
+    /opt/agent-tools/bin/python -m projectmem.mcp_server >/dev/null; then
+    echo "[ccs] MCP: could not register ProjectMem in Codex; continuing startup." >&2
+  fi
+fi
+
+if ! run_as_bun codex mcp get headroom >/dev/null 2>&1; then
+  if ! run_as_bun codex mcp add headroom -- \
+    /opt/agent-tools/bin/headroom mcp serve >/dev/null; then
+    echo "[ccs] MCP: could not register Headroom in Codex; continuing startup." >&2
+  fi
+fi
+
+echo "[ccs] OpenMemory: syncing Claude sessions to Codex." >&2
+if ! run_as_bun openmemory port --from claude-code --to codex --all; then
+  echo "[ccs] OpenMemory: Claude to Codex sync failed; continuing startup." >&2
+fi
+
+echo "[ccs] OpenMemory: syncing Codex sessions to Claude." >&2
+if ! run_as_bun openmemory port --from codex --to claude-code --all; then
+  echo "[ccs] OpenMemory: Codex to Claude sync failed; continuing startup." >&2
 fi
 
 # Login reminders. A real claude setup-token value always starts with
