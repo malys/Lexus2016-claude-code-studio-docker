@@ -200,14 +200,14 @@ RUN touch /app/data/config.json \
     && touch /home/bun/.claude/.keep /home/bun/.codex/.keep
 
 # Build-time smoke test. Version commands are allowed to fail if an upstream
-# CLI changes its version flag; command presence is the hard requirement.
+# CLI changes its help output; command presence is the hard requirement.
 RUN command -v claude \
     && command -v codex \
     && command -v tokless \
     && command -v openmemory \
     && command -v tmux \
-    && /opt/agent-tools/bin/pjm --version \
-    && /opt/agent-tools/bin/headroom --version \
+    && /opt/agent-tools/bin/pjm --help >/dev/null \
+    && /opt/agent-tools/bin/headroom --help >/dev/null \
     && test -f /app/server.js
 
 VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/home/bun/.codex", "/home/bun/.config", "/home/bun/.openmemory", "/home/bun/.local/share/openmemory", "/home/bun/.projectmem", "/home/bun/.headroom"]
