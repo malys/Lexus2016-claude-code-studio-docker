@@ -25,6 +25,21 @@ run_as_bun() {
   fi
 }
 
+# Agent session transcripts accumulate forever and the OpenMemory sync below
+# re-reads every one on each start, so old sessions make startup slower without
+# bound. Drop transcripts older than the retention window (default 10 days).
+# Only session rollouts are touched — auth.json, hooks.json, config and
+# history.jsonl live outside these dirs and are left alone.
+prune_old_sessions() {
+  days="${CCS_SESSION_RETENTION_DAYS:-10}"
+  for dir in /home/bun/.claude/projects /home/bun/.codex/sessions; do
+    [ -d "$dir" ] || continue
+    n="$(find "$dir" -type f -name '*.jsonl' -mtime "+${days}" -print -delete | wc -l)"
+    [ "$n" -gt 0 ] && echo "[ccs] sessions: pruned $n transcript(s) older than ${days}d from $dir" >&2
+  done
+  return 0
+}
+
 configure_ccs_mcp() {
   config_path="${CCS_CONFIG_PATH:-/app/data/config.json}"
   mkdir -p "$(dirname "$config_path")"
@@ -79,6 +94,8 @@ if ! run_as_bun codex mcp get headroom >/dev/null 2>&1; then
     echo "[ccs] MCP: could not register Headroom in Codex; continuing startup." >&2
   fi
 fi
+
+prune_old_sessions
 
 echo "[ccs] OpenMemory: syncing Claude sessions to Codex." >&2
 if ! run_as_bun openmemory port --from claude-code --to codex --all; then
