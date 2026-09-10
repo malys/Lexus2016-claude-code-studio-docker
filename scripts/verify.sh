@@ -9,7 +9,7 @@ docker run --rm "$IMAGE" bash -lc '
   command -v codex
   command -v tokless
   command -v openmemory
-  /opt/agent-tools/bin/pjm --version
+  /opt/agent-tools/bin/pjm --help >/dev/null
   /opt/agent-tools/bin/headroom --version
   openmemory --help >/dev/null
   openmemory port --from claude-code --to codex --all >/dev/null

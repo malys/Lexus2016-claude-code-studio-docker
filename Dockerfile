@@ -207,7 +207,7 @@ RUN command -v claude \
     && command -v openmemory \
     && command -v tmux \
     && /opt/agent-tools/bin/pjm --help >/dev/null \
-    && /opt/agent-tools/bin/headroom --help >/dev/null \
+    && /opt/agent-tools/bin/headroom --version \
     && test -f /app/server.js
 
 VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/home/bun/.codex", "/home/bun/.config", "/home/bun/.openmemory", "/home/bun/.local/share/openmemory", "/home/bun/.projectmem", "/home/bun/.headroom"]
