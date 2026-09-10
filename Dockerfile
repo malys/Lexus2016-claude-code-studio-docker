@@ -133,6 +133,24 @@ RUN for pkg_skills in /home/bun/.local/lib/node_modules/*/skills/*; do \
       ln -s "$pkg_skills" "/home/bun/.claude/skills/$(basename "$pkg_skills")"; \
     done 2>/dev/null || true
 
+# Claude Code plugins bundled into the image. The CLI clones marketplaces over
+# SSH first and falls back to HTTPS, which is what happens here (no keys).
+RUN claude plugin marketplace add DietrichGebert/ponytail \
+    && claude plugin install ponytail@ponytail --yes \
+    && claude plugin marketplace add forrestchang/andrej-karpathy-skills \
+    && claude plugin install andrej-karpathy-skills@karpathy-skills --yes \
+    && claude plugin marketplace add JuliusBrussee/caveman \
+    && claude plugin install caveman@caveman --yes
+
+# The same three plugins for Codex, which keeps its own marketplace snapshots
+# and plugin cache under /home/bun/.codex.
+RUN codex plugin marketplace add DietrichGebert/ponytail \
+    && codex plugin add ponytail@ponytail \
+    && codex plugin marketplace add forrestchang/andrej-karpathy-skills \
+    && codex plugin add andrej-karpathy-skills@karpathy-skills \
+    && codex plugin marketplace add JuliusBrussee/caveman \
+    && codex plugin add caveman@caveman
+
 # OpenMemory is currently distributed as a source checkout and runs under Bun.
 # Install Bun, clone the selected OpenMemory ref, install production runtime
 # dependencies, and create the same launcher shape as the upstream installer.
