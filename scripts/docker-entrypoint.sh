@@ -25,6 +25,54 @@ run_as_bun() {
   fi
 }
 
+# Keep CCS current without a rebuild: compare the commit this tree was built
+# from against what CCS_REF resolves to upstream, and reinstall when they
+# differ. Opt out with CCS_AUTO_UPDATE=0 (or by pinning CCS_REF to a tag, which
+# only moves when the tag does).
+#
+# The new tree is built COMPLETE in a temp dir and only then swapped in: a
+# failed clone or install leaves the running version untouched, because /app is
+# the container's writable layer and a half-written one would not start again.
+# /app/data, /app/workspace and /app/skills are volumes and are never touched.
+# The update lives in that writable layer, so it survives a restart and is
+# discarded on a recreate — which pulls a fresh image anyway.
+ccs_auto_update() {
+  [ "${CCS_AUTO_UPDATE:-1}" = "1" ] || return 0
+  [ -n "${CCS_REPO:-}" ] || return 0
+
+  current="$(cat /app/.ccs-revision 2>/dev/null || true)"
+  # Two patterns so an annotated tag is peeled to its commit (ls-remote lists
+  # the tag object first, then <ref>^{}); `END` takes the peeled one when it
+  # exists and the only line otherwise. ccs-fetch.sh records a commit sha, so
+  # both sides of the comparison are commits.
+  remote="$(git ls-remote "$CCS_REPO" "${CCS_REF:-main}" "${CCS_REF:-main}^{}" 2>/dev/null | awk 'END{print $1}')"
+  if [ -z "$remote" ]; then
+    echo "[ccs] update: cannot reach $CCS_REPO; keeping the installed version." >&2
+    return 0
+  fi
+  [ "$remote" != "$current" ] || return 0
+
+  echo "[ccs] update: ${current:-unknown} -> ${remote} (${CCS_REF:-main}); installing." >&2
+  rm -rf /tmp/ccs-update
+  if ! run_as_bun /usr/local/bin/ccs-fetch.sh /tmp/ccs-update \
+         "$CCS_REPO" "${CCS_REF:-main}" /usr/local/share/ccs/ccs-sp-file.js >&2; then
+    echo "[ccs] update: failed; keeping the installed version." >&2
+    rm -rf /tmp/ccs-update
+    return 0
+  fi
+
+  find /app -mindepth 1 -maxdepth 1 \
+    ! -name data ! -name workspace ! -name skills -exec rm -rf {} +
+  cp -a /tmp/ccs-update/. /app/
+  rm -rf /tmp/ccs-update
+  if [ "$(id -u)" = "0" ]; then
+    chown -R bun:bun /app
+  fi
+  echo "[ccs] update: now at ${remote}." >&2
+}
+
+ccs_auto_update
+
 # Agent session transcripts accumulate forever and the OpenMemory sync below
 # re-reads every one on each start, so old sessions make startup slower without
 # bound. Drop transcripts older than the retention window (default 10 days).

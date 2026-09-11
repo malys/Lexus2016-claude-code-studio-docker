@@ -20,6 +20,9 @@ services:
         required: false
     environment:
       - NODE_ENV=production
+      # CCS is re-installed from upstream at each start when the ref moved.
+      # Set to 0 to freeze the version baked into the image.
+      - CCS_AUTO_UPDATE=${CCS_AUTO_UPDATE:-1}
       - TZ=Europe/Paris
       # /app is an image layer: without these, settings saved through the CCS UI
       # (MCP servers, skills, terminal config) are lost on every recreate/update.

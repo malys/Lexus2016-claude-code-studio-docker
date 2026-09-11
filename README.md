@@ -53,6 +53,31 @@ The image runs as the `bun` user. Credentials are not baked into the image; auth
 - Headroom MCP for on-demand context compression and retrieval
 - CCS itself, fetched from the upstream `Lexus2016/claude-code-studio` repository
 
+## Self-update
+
+At every container start the entrypoint resolves `CCS_REF` upstream and
+reinstalls CCS when it points at a different commit than the running tree
+(`/app/.ccs-revision`). Nothing else is touched — the CLIs, plugins and MCP
+servers move with the image.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `CCS_AUTO_UPDATE` | `1` | `0` disables the check entirely |
+| `CCS_REPO` | upstream CCS repository | Source to track |
+| `CCS_REF` | branch/tag baked at build time | A tag only moves when the tag does |
+
+The new tree is cloned, patched and installed in a temp directory and only then
+swapped into `/app`, so a failed clone or install leaves the running version
+alone. `/app/data`, `/app/workspace` and `/app/skills` are volumes and are never
+part of the swap. The update lives in the container's writable layer: it
+survives `restart`, and a `docker compose pull` + recreate replaces it with the
+image's own version. Expect the start to take as long as a `bun install` when an
+update actually lands.
+
+`scripts/ccs-fetch.sh` builds that tree and is the same script the image build
+uses, so a self-updated container and a rebuilt image run identical code.
+`sh scripts/test-ccs-fetch.sh` checks it against a throwaway repository.
+
 ## Persistent paths
 
 | Path | Purpose |
