@@ -90,6 +90,12 @@ fi
 # Both files are written in place, never renamed over: a single-file bind mount
 # (a host claude.json mapped onto ~/.claude.json) is a mount point, so rename
 # fails with EBUSY and the seeding is lost while the container starts fine.
+# The trust flag is keyed to the EXACT directory Claude starts in and is NOT
+# inherited from a parent: with only WORKDIR trusted, a session opened on
+# WORKDIR/<project> settles on the trust question instead of the prompt box and
+# CCS reports "interactive session went idle without producing a reply". So seed
+# WORKDIR and every project directory below it. A project added after startup
+# needs a container restart to be seeded.
 configure_claude_onboarding() {
   workdir="${WORKDIR:-/app/workspace}"
   claude_config=/home/bun/.claude.json
@@ -98,12 +104,17 @@ configure_claude_onboarding() {
   [ -f "$claude_config" ] || printf '{}\n' > "$claude_config"
   [ -f "$claude_settings" ] || printf '{}\n' > "$claude_settings"
 
+  set -- "$workdir"
+  for project in "$workdir"/*/; do
+    [ -d "$project" ] && set -- "$@" "${project%/}"
+  done
+
   config_tmp="$(mktemp "${claude_config}.tmp.XXXXXX")"
-  if jq --arg dir "$workdir" '
+  if jq --args '
     .hasCompletedOnboarding = true |
     .theme //= "dark" |
-    .projects[$dir].hasTrustDialogAccepted = true
-  ' "$claude_config" > "$config_tmp" && cat "$config_tmp" > "$claude_config"; then
+    reduce $ARGS.positional[] as $dir (.; .projects[$dir].hasTrustDialogAccepted = true)
+  ' "$@" < "$claude_config" > "$config_tmp" && cat "$config_tmp" > "$claude_config"; then
     rm -f "$config_tmp"
   else
     rm -f "$config_tmp"
