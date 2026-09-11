@@ -17,6 +17,7 @@ docker run --rm "$IMAGE" bash -lc '
   command -v tmux
   command -v node
   test -f /app/server.js
+  test -s /app/.ccs-revision
   jq -e '\''.mcpServers.projectmem.command == "/opt/agent-tools/bin/python"'\'' /app/data/config.json >/dev/null
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /app/data/config.json >/dev/null
   codex mcp get projectmem >/dev/null

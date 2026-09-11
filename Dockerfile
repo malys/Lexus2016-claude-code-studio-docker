@@ -28,23 +28,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+COPY scripts/ccs-fetch.sh /usr/local/bin/ccs-fetch.sh
+COPY patches/ccs-sp-file.js /usr/local/share/ccs/ccs-sp-file.js
+
+# One definition of "a runnable CCS tree" — the entrypoint's startup updater
+# runs the same script, so a self-updated container and a rebuilt image are the
+# same code.
+RUN chmod 0755 /usr/local/bin/ccs-fetch.sh \
+    && ccs-fetch.sh /src "${CCS_REPO}" "${CCS_REF}" /usr/local/share/ccs/ccs-sp-file.js
+
 WORKDIR /src
-
-RUN git clone --depth 1 --branch "${CCS_REF}" "${CCS_REPO}" . \
-    && git rev-parse HEAD > /ccs-revision
-
-# tmux caps a single command string at ~16 KB (its imsg limit), but CCS builds
-# the whole system prompt into the command it hands to `tmux new-session`, and
-# that prompt carries the project's AGENTS.md (up to 64 KB). A project with a
-# large AGENTS.md therefore never starts and CCS only reports "failed to start
-# tmux session for interactive engine". Spill the prompt to a file instead.
-COPY patches/ccs-sp-file.js /src/ccs-sp-file.js
-RUN grep -q 'innerCmd += ` --append-system-prompt ${shq(sp)}`' claude-interactive.js \
-    && sed -i 's|innerCmd += ` --append-system-prompt ${shq(sp)}`|innerCmd += ` --append-system-prompt "$(cat ${shq(require("./ccs-sp-file.js")(sp))})"`|' claude-interactive.js
-
-# npm install is used rather than npm ci so the image also works when the
-# upstream repository changes lockfile/package-manager details between CCS releases.
-RUN bun install --omit=dev
 
 # Copy only the application and its runtime dependencies into the final stage.
 # A small manifest is retained for build metadata/debugging.
@@ -68,6 +61,8 @@ ARG TOKLESS_REF
 ARG OPENMEMORY_REF
 ARG PROJECTMEM_VERSION
 ARG HEADROOM_VERSION
+ARG CCS_REPO
+ARG CCS_REF
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_ENV=production
@@ -76,6 +71,10 @@ ENV HOST=0.0.0.0
 ENV WORKDIR=/app/workspace
 ENV CCS_CONFIG_PATH=/app/data/config.json
 ENV CCS_ENV_PATH=/app/data/.env
+# What the startup updater tracks. A build pinned to a tag stays on that tag:
+# the updater only reinstalls when the ref resolves to a different commit.
+ENV CCS_REPO=${CCS_REPO}
+ENV CCS_REF=${CCS_REF}
 ENV HOME=/home/bun
 ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}
 # Headroom memory is pinned to the container-global store. Headroom picks its
@@ -106,8 +105,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # runtime module as CCS evolves.
 WORKDIR /app
 COPY --from=ccs-builder /src/ ./
-RUN rm -rf /app/.git /app/.github /app/.planning /app/test /app/electron \
-    /app/homebrew-tap /app/build
+COPY scripts/ccs-fetch.sh /usr/local/bin/ccs-fetch.sh
+COPY patches/ccs-sp-file.js /usr/local/share/ccs/ccs-sp-file.js
+RUN chmod 0755 /usr/local/bin/ccs-fetch.sh
 
 # Install agent CLIs as the non-root runtime user. npm itself is available in
 # the Bun image and the executables are placed in /usr/local/bin.
@@ -230,7 +230,8 @@ RUN command -v claude \
     && command -v tmux \
     && /opt/agent-tools/bin/pjm --help >/dev/null \
     && /opt/agent-tools/bin/headroom --version \
-    && test -f /app/server.js
+    && test -f /app/server.js \
+    && test -s /app/.ccs-revision
 
 VOLUME ["/app/data", "/app/workspace", "/app/skills", "/home/bun/.claude", "/home/bun/.codex", "/home/bun/.config", "/home/bun/.openmemory", "/home/bun/.local/share/openmemory", "/home/bun/.projectmem", "/home/bun/.headroom"]
 
