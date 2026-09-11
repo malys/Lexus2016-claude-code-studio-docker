@@ -28,6 +28,18 @@ docker run --rm "$IMAGE" bash -lc '
   echo "Smoke test passed"
 '
 
+# A fresh container has an empty workspace, so the registration loop above has
+# nothing to prove. Seed a project directory and re-run the entrypoint (it is
+# idempotent up to the final exec) to check it lands in the registry.
+docker run --rm "$IMAGE" bash -lc '
+  set -e
+  mkdir -p /app/workspace/smoke-proj
+  docker-entrypoint.sh true
+  test -d /app/workspace/smoke-proj/.projectmem
+  gosu bun /opt/agent-tools/bin/pjm project list | grep -q smoke-proj
+  echo "ProjectMem registration test passed"
+'
+
 docker run --rm --user bun "$IMAGE" bash -lc '
   set -e
   test "$(id -u)" != "0"

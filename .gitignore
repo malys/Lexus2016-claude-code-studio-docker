@@ -1,3 +1,8 @@
 .env
 .DS_Store
 /.codegraph
+
+.projectmem/events.jsonl
+.projectmem/watch.pid
+.projectmem/watch.log
+.projectmem/structure.json

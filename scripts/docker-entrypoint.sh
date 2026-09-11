@@ -139,6 +139,35 @@ if ! configure_claude_onboarding; then
   echo "[ccs] Claude: first-run prompts not pre-accepted; interactive sessions may hang." >&2
 fi
 
+# One ProjectMem MCP server serves every project, but only projects in the
+# registry (~/.projectmem) can be named on a call. `pjm init` creates
+# .projectmem/ in the repo and registers it; it is idempotent, so this re-runs
+# on every start and picks up projects added since the last one. A project
+# added while the container runs needs a restart, same as the trust seeding
+# above. Headroom needs no equivalent: its MCP server is registered globally
+# (CCS config, Codex, ~/.claude.json), so every project already reaches it.
+# --no-watch: one file-watcher daemon per project per start, with nobody
+# reading the churn events, is a leak. --no-claude-md when the project uses
+# AGENTS.md and has no CLAUDE.md: `agents-md.js` precedence is exclusive, so
+# creating a bridge-only CLAUDE.md would silence that project's real
+# conventions.
+register_projectmem_projects() {
+  workdir="${WORKDIR:-/app/workspace}"
+  for project in "$workdir"/*/; do
+    project="${project%/}"
+    [ -d "$project" ] || continue
+    set -- init --no-watch
+    if [ -f "$project/AGENTS.md" ] && [ ! -f "$project/CLAUDE.md" ]; then
+      set -- "$@" --no-claude-md
+    fi
+    if ! (cd "$project" && run_as_bun /opt/agent-tools/bin/pjm "$@" >/dev/null 2>&1); then
+      echo "[ccs] ProjectMem: could not register $project; continuing startup." >&2
+    fi
+  done
+}
+
+register_projectmem_projects
+
 if ! run_as_bun codex mcp get projectmem >/dev/null 2>&1; then
   if ! run_as_bun codex mcp add projectmem -- \
     /opt/agent-tools/bin/python -m projectmem.mcp_server >/dev/null; then
