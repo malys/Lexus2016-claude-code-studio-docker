@@ -22,6 +22,8 @@ docker run --rm "$IMAGE" bash -lc '
   codex mcp get projectmem >/dev/null
   codex mcp get headroom >/dev/null
   jq -e '\''.hasCompletedOnboarding == true'\'' /home/bun/.claude.json >/dev/null
+  jq -e '\''.mcpServers.projectmem.command == "/opt/agent-tools/bin/python"'\'' /home/bun/.claude.json >/dev/null
+  jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.projects["/app/workspace"].hasTrustDialogAccepted == true'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.skipDangerousModePermissionPrompt == true'\'' /home/bun/.claude/settings.json >/dev/null
   test "$(id -u)" != "0"

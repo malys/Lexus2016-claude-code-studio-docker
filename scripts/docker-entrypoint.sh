@@ -41,6 +41,23 @@ prune_old_sessions() {
   return 0
 }
 
+# One definition of both MCP servers, shared by every registration below. CCS
+# passes its own config with --mcp-config, while a `claude` started from a
+# terminal or docker exec reads only ~/.claude.json; both must offer the same
+# two servers or a project is tracked in one kind of session and not the other.
+MCP_SERVERS_JSON='{
+  "projectmem": {
+    "type": "stdio",
+    "command": "/opt/agent-tools/bin/python",
+    "args": ["-m", "projectmem.mcp_server"]
+  },
+  "headroom": {
+    "type": "stdio",
+    "command": "/opt/agent-tools/bin/headroom",
+    "args": ["mcp", "serve"]
+  }
+}'
+
 configure_ccs_mcp() {
   config_path="${CCS_CONFIG_PATH:-/app/data/config.json}"
   mkdir -p "$(dirname "$config_path")"
@@ -54,19 +71,9 @@ configure_ccs_mcp() {
   fi
 
   config_tmp="$(mktemp "${config_path}.tmp.XXXXXX")"
-  if jq '
-    .mcpServers //= {} |
-    .mcpServers.projectmem //= {
-      "type": "stdio",
-      "command": "/opt/agent-tools/bin/python",
-      "args": ["-m", "projectmem.mcp_server"]
-    } |
-    .mcpServers.headroom //= {
-      "type": "stdio",
-      "command": "/opt/agent-tools/bin/headroom",
-      "args": ["mcp", "serve"]
-    }
-  ' "$config_path" > "$config_tmp"; then
+  if jq --argjson servers "$MCP_SERVERS_JSON" \
+       '.mcpServers = ($servers + (.mcpServers // {}))' \
+       "$config_path" > "$config_tmp"; then
     chmod 0600 "$config_tmp"
     mv "$config_tmp" "$config_path"
     if [ "$(id -u)" = "0" ]; then
@@ -90,6 +97,11 @@ fi
 # Both files are written in place, never renamed over: a single-file bind mount
 # (a host claude.json mapped onto ~/.claude.json) is a mount point, so rename
 # fails with EBUSY and the seeding is lost while the container starts fine.
+# The same file carries user-scope MCP servers (`claude mcp add -s user` writes
+# ~/.claude.json "mcpServers"), which is the only place a `claude` started from a
+# CCS terminal pane or `docker exec` looks: CCS's own --mcp-config reaches chat
+# runs only, so without this a project is tracked by ProjectMem and Headroom in a
+# chat and by neither in a terminal.
 # The trust flag is keyed to the EXACT directory Claude starts in and is NOT
 # inherited from a parent: with only WORKDIR trusted, a session opened on
 # WORKDIR/<project> settles on the trust question instead of the prompt box and
@@ -110,9 +122,10 @@ configure_claude_onboarding() {
   done
 
   config_tmp="$(mktemp "${claude_config}.tmp.XXXXXX")"
-  if jq --args '
+  if jq --argjson servers "$MCP_SERVERS_JSON" --args '
     .hasCompletedOnboarding = true |
     .theme //= "dark" |
+    .mcpServers = ($servers + (.mcpServers // {})) |
     reduce $ARGS.positional[] as $dir (.; .projects[$dir].hasTrustDialogAccepted = true)
   ' "$@" < "$claude_config" > "$config_tmp" && cat "$config_tmp" > "$claude_config"; then
     rm -f "$config_tmp"

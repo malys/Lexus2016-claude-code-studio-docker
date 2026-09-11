@@ -68,11 +68,16 @@ The image runs as the `bun` user. Credentials are not baked into the image; auth
 | `/home/bun/.projectmem` | ProjectMem project registry |
 | `/home/bun/.headroom` | Headroom MCP state and retrieval cache |
 
-ProjectMem and Headroom are added idempotently to CCS and Codex MCP config at
-container startup. Existing entries with the same names are preserved. Headroom
-runs in MCP-only mode: no proxy, dashboard, or extra network port. ProjectMem
-does not modify repositories automatically; run `pjm init` explicitly inside a
-workspace when wanted.
+ProjectMem and Headroom are added idempotently to the CCS, Codex and user-scope
+Claude (`~/.claude.json`) MCP config at container startup, so chat runs and
+terminal / `docker exec` sessions reach both servers. Existing entries with the
+same names are preserved.
+
+Every directory under `WORKDIR` is registered with ProjectMem (`pjm init
+--no-watch`) at startup, so each project has its own memory; a project added
+while the container runs needs a restart to be picked up. Headroom needs no
+per-project step: it runs in MCP-only mode (no proxy, dashboard or extra network
+port) against one global store, which every project already reaches.
 
 ## CI/CD
 
