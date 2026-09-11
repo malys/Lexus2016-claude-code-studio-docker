@@ -15,6 +15,7 @@ docker run --rm "$IMAGE" bash -lc '
   openmemory port --from claude-code --to codex --all >/dev/null
   openmemory port --from codex --to claude-code --all >/dev/null
   command -v tmux
+  command -v node
   test -f /app/server.js
   jq -e '\''.mcpServers.projectmem.command == "/opt/agent-tools/bin/python"'\'' /app/data/config.json >/dev/null
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /app/data/config.json >/dev/null

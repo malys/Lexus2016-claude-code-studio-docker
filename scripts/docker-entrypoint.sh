@@ -86,6 +86,9 @@ fi
 # with no visible output and CCS reports only "failed to start tmux session for
 # interactive engine". Pre-accept the three prompts. The trust flag on WORKDIR
 # is inherited by every project directory below it.
+# Both files are written in place, never renamed over: a single-file bind mount
+# (a host claude.json mapped onto ~/.claude.json) is a mount point, so rename
+# fails with EBUSY and the seeding is lost while the container starts fine.
 configure_claude_onboarding() {
   workdir="${WORKDIR:-/app/workspace}"
   claude_config=/home/bun/.claude.json
@@ -99,16 +102,17 @@ configure_claude_onboarding() {
     .hasCompletedOnboarding = true |
     .theme //= "dark" |
     .projects[$dir].hasTrustDialogAccepted = true
-  ' "$claude_config" > "$config_tmp"; then
-    mv "$config_tmp" "$claude_config"
+  ' "$claude_config" > "$config_tmp" && cat "$config_tmp" > "$claude_config"; then
+    rm -f "$config_tmp"
   else
     rm -f "$config_tmp"
     return 1
   fi
 
   settings_tmp="$(mktemp "${claude_settings}.tmp.XXXXXX")"
-  if jq '.skipDangerousModePermissionPrompt = true' "$claude_settings" > "$settings_tmp"; then
-    mv "$settings_tmp" "$claude_settings"
+  if jq '.skipDangerousModePermissionPrompt = true' "$claude_settings" > "$settings_tmp" \
+     && cat "$settings_tmp" > "$claude_settings"; then
+    rm -f "$settings_tmp"
   else
     rm -f "$settings_tmp"
     return 1

@@ -98,6 +98,11 @@ RUN bun install -g \
       @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
       @openai/codex@${CODEX_VERSION}
 
+# Plugin hooks and `#!/usr/bin/env node` shebangs (codex's launcher among them)
+# call `node`, which the Bun image does not ship. Bun answers under its
+# Node-compatibility mode; a real node is only needed for native addons.
+RUN ln -s /usr/local/bin/bun /usr/local/bin/node
+
 # Local stdio MCP servers. Keep them in an image-owned venv so persistent
 # user config volumes cannot hide or replace their runtimes.
 RUN python3 -m venv /opt/agent-tools \
