@@ -40,6 +40,10 @@ docker run --rm "$IMAGE" bash -lc '
   test -d /app/workspace/smoke-proj/.projectmem
   gosu bun /opt/agent-tools/bin/pjm project list | grep -q smoke-proj
   echo "ProjectMem registration test passed"
+  cd /app/workspace/smoke-proj
+  test "$(/opt/agent-tools/bin/python -c "from headroom.paths import memory_db_path as m; print(m())")" = /home/bun/.headroom/memory.db
+  test "$(/opt/agent-tools/bin/python -c "from headroom.cli.memory import _default_db_path as d; print(d())")" = /home/bun/.headroom/memory.db
+  echo "Headroom global memory test passed"
 '
 
 docker run --rm --user bun "$IMAGE" bash -lc '

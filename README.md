@@ -75,9 +75,15 @@ same names are preserved.
 
 Every directory under `WORKDIR` is registered with ProjectMem (`pjm init
 --no-watch`) at startup, so each project has its own memory; a project added
-while the container runs needs a restart to be picked up. Headroom needs no
-per-project step: it runs in MCP-only mode (no proxy, dashboard or extra network
-port) against one global store, which every project already reaches.
+while the container runs needs a restart to be picked up.
+
+Headroom is the opposite: memory is **global** and never per project. It runs in
+MCP-only mode (no proxy, dashboard or extra network port), and
+`HEADROOM_WORKSPACE_DIR` / `HEADROOM_MEMORY_DB_PATH` pin its store to
+`/home/bun/.headroom/memory.db` for every session, so opening a project never
+raises a "how should memory be scoped?" question. Headroom still prefers
+`<cwd>/.headroom/memory.db` when that file exists, so the entrypoint warns about
+any project-local store it finds under `WORKDIR` — delete it to stay global.
 
 ## CI/CD
 

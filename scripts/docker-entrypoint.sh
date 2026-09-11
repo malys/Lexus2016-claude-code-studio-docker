@@ -181,6 +181,23 @@ register_projectmem_projects() {
 
 register_projectmem_projects
 
+# HEADROOM_WORKSPACE_DIR / HEADROOM_MEMORY_DB_PATH (Dockerfile) pin Headroom's
+# memory to one container-global store, so no session has to decide how memory is
+# scoped. `headroom memory` and the memory MCP server resolve
+# `<cwd>/.headroom/memory.db` FIRST when that file exists and consult no env var,
+# so a single stray project store silently restores per-project memory. Nothing
+# here creates one; report it instead of deleting a user's data.
+warn_project_headroom_stores() {
+  workdir="${WORKDIR:-/app/workspace}"
+  for db in "$workdir"/*/.headroom/memory.db; do
+    [ -f "$db" ] || continue
+    echo "[ccs] Headroom: project store $db overrides the global one; remove it to keep memory global." >&2
+  done
+  return 0
+}
+
+warn_project_headroom_stores
+
 if ! run_as_bun codex mcp get projectmem >/dev/null 2>&1; then
   if ! run_as_bun codex mcp add projectmem -- \
     /opt/agent-tools/bin/python -m projectmem.mcp_server >/dev/null; then

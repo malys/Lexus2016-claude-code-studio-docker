@@ -78,6 +78,14 @@ ENV CCS_CONFIG_PATH=/app/data/config.json
 ENV CCS_ENV_PATH=/app/data/.env
 ENV HOME=/home/bun
 ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}
+# Headroom memory is pinned to the container-global store. Headroom picks its
+# store from the CWD (`<cwd>/.headroom/memory.db` when that file exists, else the
+# workspace root), so a session opened in /app/workspace/<project> can end up on
+# a per-project DB and the mode becomes a question asked at session start. These
+# two vars remove the choice: one workspace root, one DB, every project. The
+# workspace root is the volume-backed dir, so memory still survives a restart.
+ENV HEADROOM_WORKSPACE_DIR=/home/bun/.headroom
+ENV HEADROOM_MEMORY_DB_PATH=/home/bun/.headroom/memory.db
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
