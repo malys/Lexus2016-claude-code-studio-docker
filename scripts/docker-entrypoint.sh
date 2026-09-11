@@ -36,6 +36,7 @@ prune_old_sessions() {
     [ -d "$dir" ] || continue
     n="$(find "$dir" -type f -name '*.jsonl' -mtime "+${days}" -print -delete | wc -l)"
     [ "$n" -gt 0 ] && echo "[ccs] sessions: pruned $n transcript(s) older than ${days}d from $dir" >&2
+    find "$dir" -mindepth 1 -type d -empty -delete
   done
   return 0
 }
