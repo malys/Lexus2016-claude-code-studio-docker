@@ -33,6 +33,15 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${CCS_REF}" "${CCS_REPO}" . \
     && git rev-parse HEAD > /ccs-revision
 
+# tmux caps a single command string at ~16 KB (its imsg limit), but CCS builds
+# the whole system prompt into the command it hands to `tmux new-session`, and
+# that prompt carries the project's AGENTS.md (up to 64 KB). A project with a
+# large AGENTS.md therefore never starts and CCS only reports "failed to start
+# tmux session for interactive engine". Spill the prompt to a file instead.
+COPY patches/ccs-sp-file.js /src/ccs-sp-file.js
+RUN grep -q 'innerCmd += ` --append-system-prompt ${shq(sp)}`' claude-interactive.js \
+    && sed -i 's|innerCmd += ` --append-system-prompt ${shq(sp)}`|innerCmd += ` --append-system-prompt "$(cat ${shq(require("./ccs-sp-file.js")(sp))})"`|' claude-interactive.js
+
 # npm install is used rather than npm ci so the image also works when the
 # upstream repository changes lockfile/package-manager details between CCS releases.
 RUN bun install --omit=dev
