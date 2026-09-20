@@ -27,6 +27,11 @@ docker run --rm "$IMAGE" bash -lc '
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.projects["/app/workspace"].hasTrustDialogAccepted == true'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.skipDangerousModePermissionPrompt == true'\'' /home/bun/.claude/settings.json >/dev/null
+  # The tokless package skills are re-linked by the entrypoint, not only at
+  # build time — a named volume from an older image never gets the image copy.
+  test -L /home/bun/.claude/skills/ctx-search
+  test -e /home/bun/.claude/skills/ctx-search/SKILL.md
+  test -e /app/skills/ctx-search
   test "$(id -u)" != "0"
   echo "Smoke test passed"
 '
@@ -37,10 +42,15 @@ docker run --rm "$IMAGE" bash -lc '
 docker run --rm "$IMAGE" bash -lc '
   set -e
   mkdir -p /app/workspace/smoke-proj
+  printf "export const smoke = 1;\n" > /app/workspace/smoke-proj/index.js
   docker-entrypoint.sh true
   test -d /app/workspace/smoke-proj/.projectmem
   gosu bun /opt/agent-tools/bin/pjm project list | grep -q smoke-proj
   echo "ProjectMem registration test passed"
+  # The CodeGraph sweep is backgrounded on purpose (a first index of a large
+  # repo must not delay the server), so poll instead of asserting immediately.
+  timeout 300 bash -c "until [ -f /app/workspace/smoke-proj/.codegraph/codegraph.db ]; do sleep 2; done"
+  echo "CodeGraph index test passed"
   cd /app/workspace/smoke-proj
   test "$(/opt/agent-tools/bin/python -c "from headroom.paths import memory_db_path as m; print(m())")" = /home/bun/.headroom/memory.db
   test "$(/opt/agent-tools/bin/python -c "from headroom.cli.memory import _default_db_path as d; print(d())")" = /home/bun/.headroom/memory.db

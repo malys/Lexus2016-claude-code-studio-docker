@@ -89,6 +89,47 @@ prune_old_sessions() {
   return 0
 }
 
+# The image links every tokless-installed package's skills into
+# ~/.claude/skills at BUILD time and mirrors them into /app/skills. Both are
+# named volumes, and Docker seeds a named volume from the image only while that
+# volume is EMPTY: a volume created by an earlier image keeps its old content
+# forever, so skills a newer image added (context-mode's ctx-search, ctx-index,
+# ctx-doctor, ...) never appear. The binary, its MCP servers and ~/.claude.json
+# are image-layer/entrypoint-managed and stay fine, which is why the symptom
+# reads as "tokless is no longer installed" while `tokless` itself reports every
+# tool green. Re-link on every start; idempotent.
+# A real directory of the same name is left alone (a user-installed skill wins);
+# only a symlink is refreshed, which also repairs one left dangling by an
+# upgrade that renamed the package directory.
+link_tokless_skills() {
+  skills_dir=/home/bun/.claude/skills
+  mkdir -p "$skills_dir" /app/skills
+
+  for pkg_skills in /home/bun/.local/lib/node_modules/*/skills/*; do
+    [ -d "$pkg_skills" ] || continue
+    target="$skills_dir/$(basename "$pkg_skills")"
+    if [ -L "$target" ]; then
+      ln -sfn "$pkg_skills" "$target" || return 1
+    elif [ ! -e "$target" ]; then
+      ln -s "$pkg_skills" "$target" || return 1
+    fi
+  done
+
+  # CCS scans /app/skills, Claude Code scans ~/.claude/skills. Same mirror the
+  # Dockerfile performs, for the same reason: the CCS-level system prompt has to
+  # see the skills too. cp -a copies the symlinks as symlinks, which resolve
+  # inside the container.
+  cp -a "$skills_dir"/. /app/skills/ 2>/dev/null || true
+
+  if [ "$(id -u)" = "0" ]; then
+    chown -h -R bun:bun "$skills_dir" /app/skills
+  fi
+}
+
+if ! link_tokless_skills; then
+  echo "[ccs] tokless: could not link package skills; ctx-* skills may be missing." >&2
+fi
+
 # One definition of both MCP servers, shared by every registration below. CCS
 # passes its own config with --mcp-config, while a `claude` started from a
 # terminal or docker exec reads only ~/.claude.json; both must offer the same
@@ -228,6 +269,41 @@ register_projectmem_projects() {
 }
 
 register_projectmem_projects
+
+# CodeGraph keeps one index per project in <project>/.codegraph, and nothing
+# creates it for a project added after the image was built — so a new project is
+# invisible to the codegraph MCP server and every agent silently falls back to
+# grep. `codegraph init -y` is non-interactive and idempotent, but a FIRST index
+# of a large repo takes minutes, so the sweep runs in the background: CCS must
+# still answer on :3000 immediately. Only projects with no .codegraph are
+# touched; the daemon that init leaves behind keeps that project in sync from
+# then on. Set CCS_CODEGRAPH_INDEX=0 to skip it entirely.
+# NOTE this is also why the chown -R at the top of this script matters for
+# /app/workspace: a `docker exec` into this container lands as ROOT with
+# HOME=/home/bun, so a `tokless`/`codegraph` run from such a shell writes a
+# root-owned .codegraph/ that the bun-owned server can only report as
+# "attempt to write a readonly database". The chown heals it on the next start.
+index_workspace_projects() {
+  workdir="${WORKDIR:-/app/workspace}"
+  for project in "$workdir"/*/; do
+    project="${project%/}"
+    [ -d "$project" ] || continue
+    if [ -d "$project/.codegraph" ]; then
+      continue
+    fi
+    echo "[ccs] CodeGraph: indexing $project (first time; runs in background)" >&2
+    if run_as_bun /home/bun/.local/bin/codegraph init -y "$project" >/dev/null 2>&1; then
+      echo "[ccs] CodeGraph: indexed $project" >&2
+    else
+      echo "[ccs] CodeGraph: could not index $project; agents fall back to grep there." >&2
+    fi
+  done
+  return 0
+}
+
+if [ "${CCS_CODEGRAPH_INDEX:-1}" = "1" ] && [ -x /home/bun/.local/bin/codegraph ]; then
+  index_workspace_projects &
+fi
 
 # HEADROOM_WORKSPACE_DIR / HEADROOM_MEMORY_DB_PATH (Dockerfile) pin Headroom's
 # memory to one container-global store, so no session has to decide how memory is

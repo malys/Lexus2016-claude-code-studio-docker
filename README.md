@@ -102,6 +102,32 @@ Every directory under `WORKDIR` is registered with ProjectMem (`pjm init
 --no-watch`) at startup, so each project has its own memory; a project added
 while the container runs needs a restart to be picked up.
 
+Every directory under `WORKDIR` is also indexed by CodeGraph (`codegraph init
+-y`) at startup when it has no `.codegraph/` yet, so a project added after the
+image was built is reachable by the `codegraph_explore` MCP tool instead of
+silently falling back to grep. The sweep runs in the background — a first index
+of a large repo takes minutes and must not delay the server — and it skips any
+project that is already indexed. Set `CCS_CODEGRAPH_INDEX=0` to disable it.
+
+The tokless-installed package skills (context-mode's `ctx-search`, `ctx-index`,
+`ctx-doctor`, …) are re-linked into `/home/bun/.claude/skills` and mirrored into
+`/app/skills` on every start. They are baked into the image, but both of those
+paths are **named volumes**, and Docker seeds a named volume from the image only
+while the volume is still EMPTY: a volume created by an earlier image keeps its
+old content forever, so skills added by a newer image would never show up. The
+symptom is "tokless is no longer installed" on a container recreated against an
+updated image, even though `tokless` itself reports every tool green — the
+binary and its MCP servers live in an image layer and are unaffected.
+
+> **Use `docker exec -u bun`, not a root shell.** The container starts as root
+> so the entrypoint can fix bind-mount ownership, so `docker exec -ti
+> claude-code-studio bash` lands you as **root with `HOME=/home/bun`**. Anything
+> run there — `tokless`, `codegraph`, `claude` — writes root-owned files into
+> the `bun` user's home and into project directories; the server then runs as
+> `bun` and cannot write them. A root-owned `<project>/.codegraph` reports
+> `attempt to write a readonly database` and the project looks un-indexed. The
+> entrypoint's `chown -R` repairs it on the next container restart.
+
 Headroom is the opposite: memory is **global** and never per project. It runs in
 MCP-only mode (no proxy, dashboard or extra network port), and
 `HEADROOM_WORKSPACE_DIR` / `HEADROOM_MEMORY_DB_PATH` pin its store to
