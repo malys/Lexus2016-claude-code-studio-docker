@@ -126,6 +126,15 @@ link_tokless_skills() {
   fi
 }
 
+# tokless wires its tools into ~/.claude, ~/.claude.json and ~/.codex at build
+# time. Those paths are usually bind-mounted from the host, which hides the
+# image's copy, so the tools read as "not installed" after a recreate. The tools
+# themselves live in ~/.local (image layer); re-run the idempotent wiring step
+# on every start so it lands in whatever config is mounted.
+if ! run_as_bun tokless --agents claude,codex >/dev/null 2>&1; then
+  echo "[ccs] tokless: wiring failed; run 'tokless doctor' in the container." >&2
+fi
+
 if ! link_tokless_skills; then
   echo "[ccs] tokless: could not link package skills; ctx-* skills may be missing." >&2
 fi

@@ -151,28 +151,6 @@ RUN mkdir -p \
 # Switch to bun before running user-scoped installers.
 USER bun
 
-# tokless installer: upstream documents the curl installer and automatic agent
-# detection/selection. Only Claude and Codex are installed in this image.
-# Download to temp file first to provide better error diagnostics.
-# Note: RTK setup failures are ignored (|| true) as RTK is optional in container
-# environments and all required agents are still installed and functional.
-ARG TOKLESS_REF
-RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" \
-    && bash /tmp/install.sh \
-    && tokless --agents claude,codex --yes || true \
-    && rm -f /tmp/install.sh
-
-# tokless's installer skips a TTY-dependent setup step in an unattended
-# `docker build` (it logs "/dev/tty: No such device or address"), so skills
-# bundled inside the packages it installs — e.g. context-mode's ctx-search,
-# ctx-index, etc. — are left under node_modules and never linked into
-# ~/.claude/skills, where Claude Code (and the mirror step below) look for
-# them. Link them in ourselves.
-RUN for pkg_skills in /home/bun/.local/lib/node_modules/*/skills/*; do \
-      [ -d "$pkg_skills" ] || continue; \
-      ln -s "$pkg_skills" "/home/bun/.claude/skills/$(basename "$pkg_skills")"; \
-    done 2>/dev/null || true
-
 # Claude Code plugins bundled into the image. The CLI clones marketplaces over
 # SSH first and falls back to HTTPS, which is what happens here (no keys).
 RUN claude plugin marketplace add DietrichGebert/ponytail \
@@ -209,6 +187,31 @@ RUN git clone --depth 1 --branch "${OPENMEMORY_REF}" \
     && chmod 0755 /home/bun/.local/bin/openmemory \
     && bun pm cache rm
 
+# tokless installer: upstream documents the curl installer and automatic agent
+# detection/selection. Only Claude and Codex are installed in this image.
+# Download to temp file first to provide better error diagnostics.
+# The installer ends by running `tokless </dev/tty`. Under `docker build`
+# /dev/tty passes its `-r` test but cannot be opened ("No such device or
+# address"), so the installer exits non-zero after placing the binary. Ignore
+# that exit only; the wiring run below must succeed, and the smoke test checks
+# the tools it installs.
+ARG TOKLESS_REF
+RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" \
+    && { bash /tmp/install.sh || true; } \
+    && tokless --agents claude,codex \
+    && rm -f /tmp/install.sh
+
+# tokless's installer skips a TTY-dependent setup step in an unattended
+# `docker build` (it logs "/dev/tty: No such device or address"), so skills
+# bundled inside the packages it installs — e.g. context-mode's ctx-search,
+# ctx-index, etc. — are left under node_modules and never linked into
+# ~/.claude/skills, where Claude Code (and the mirror step below) look for
+# them. Link them in ourselves.
+RUN for pkg_skills in /home/bun/.local/lib/node_modules/*/skills/*; do \
+      [ -d "$pkg_skills" ] || continue; \
+      ln -s "$pkg_skills" "/home/bun/.claude/skills/$(basename "$pkg_skills")"; \
+    done 2>/dev/null || true
+
 # CCS scans /app/skills while Claude Code scans ~/.claude/skills. Mirror any
 # tokless-generated Claude skills so the CCS-level system prompt sees them too.
 RUN if [ -d /home/bun/.claude/skills ]; then \
@@ -226,6 +229,9 @@ RUN touch /app/data/config.json \
 RUN command -v claude \
     && command -v codex \
     && command -v tokless \
+    && command -v rtk \
+    && command -v codegraph \
+    && command -v context-mode \
     && command -v openmemory \
     && command -v tmux \
     && /opt/agent-tools/bin/pjm --help >/dev/null \
