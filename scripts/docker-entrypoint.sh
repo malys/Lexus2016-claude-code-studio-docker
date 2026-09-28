@@ -125,6 +125,50 @@ port_sessions() {
   fi
 }
 
+# CCS gives every session, task and chain its own git worktree under
+# /app/data/worktrees/<project>/<unit>, but its session cleanup
+# (SESSION_TTL_DAYS, default 30) only deletes the DB row, never the worktree,
+# so they pile up. Remove every worktree no DB row references any more. Runs
+# before CCS starts, so nothing can be creating one meanwhile. No work is lost:
+# `git worktree remove` without --force refuses a tree with uncommitted or
+# untracked changes, and `branch -d` refuses an unmerged branch.
+prune_orphan_worktrees() {
+  root=/app/data/worktrees
+  [ -d "$root" ] && [ -f /app/data/chats.db ] || return 0
+  # Fail safe: if the DB can't be read, every worktree counts as in use.
+  # Explicit exit code: `bun -e` exits 0 on an uncaught error.
+  if ! used="$(run_as_bun bun -e '
+    try {
+      const db = new (require("bun:sqlite").Database)("/app/data/chats.db", { readonly: true });
+      for (const t of ["sessions", "tasks", "task_chains"])
+        for (const r of db.query(`SELECT workdir FROM ${t} WHERE workdir IS NOT NULL`).all())
+          console.log(r.workdir);
+    } catch (e) { console.error(e.message); process.exit(1); }
+  ')"; then
+    echo "[ccs] worktrees: cannot read chats.db; skipping prune." >&2
+    return 0
+  fi
+  pruned=0 kept=0
+  for wt in "$root"/*/*; do
+    [ -d "$wt" ] || continue
+    printf '%s\n' "$used" | grep -qxF "$wt" && continue
+    # Not a worktree at all (crash between mkdir and `worktree add`).
+    if [ ! -e "$wt/.git" ]; then rm -rf "$wt"; continue; fi
+    repo="$(run_as_bun git -C "$wt" rev-parse --path-format=absolute --git-common-dir)" || continue
+    branch="$(run_as_bun git -C "$wt" symbolic-ref --quiet --short HEAD)" || branch=
+    if run_as_bun git --git-dir="$repo" worktree remove "$wt" 2>/dev/null; then
+      pruned=$((pruned + 1))
+      [ -z "$branch" ] || run_as_bun git --git-dir="$repo" branch -d "$branch" >/dev/null 2>&1 || true
+    else
+      kept=$((kept + 1))
+    fi
+  done
+  find "$root" -mindepth 1 -maxdepth 1 -type d -empty -delete
+  [ "$pruned" -eq 0 ] || echo "[ccs] worktrees: removed $pruned orphan worktree(s)." >&2
+  [ "$kept" -eq 0 ] || echo "[ccs] worktrees: kept $kept orphan worktree(s) with uncommitted changes." >&2
+  return 0
+}
+
 # The image links every tokless-installed package's skills into
 # ~/.claude/skills at BUILD time and mirrors them into /app/skills. Both are
 # named volumes, and Docker seeds a named volume from the image only while that
@@ -394,6 +438,8 @@ codex_ids="$(prune_sessions /home/bun/.codex/sessions '"originator":"openmemory"
 
 port_sessions claude-code codex "$claude_ids"
 port_sessions codex claude-code "$codex_ids"
+
+prune_orphan_worktrees
 
 # Login reminders. A real claude setup-token value always starts with
 # sk-ant-oat01- — anything else is rejected by the `claude` CLI, which then
