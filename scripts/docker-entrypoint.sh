@@ -74,19 +74,55 @@ ccs_auto_update() {
 ccs_auto_update
 
 # Agent session transcripts accumulate forever and the OpenMemory sync below
-# re-reads every one on each start, so old sessions make startup slower without
-# bound. Drop transcripts older than the retention window (default 10 days).
-# Only session rollouts are touched — auth.json, hooks.json, config and
+# re-reads every one on each start. Worse, `openmemory port --all` re-ports the
+# copies it wrote itself (A->B->A clone chain, a documented upstream limitation):
+# every start turned each ported session into one more fresh-mtime copy, so an
+# age-based prune never caught them and the store grew until the disk filled.
+# Keep only the newest native sessions per agent, cap OpenMemory copies at what
+# the other agent can still produce, and port the kept natives by --id.
+# Only session transcripts are touched — auth.json, hooks.json, config and
 # history.jsonl live outside these dirs and are left alone.
-prune_old_sessions() {
-  days="${CCS_SESSION_RETENTION_DAYS:-10}"
-  for dir in /home/bun/.claude/projects /home/bun/.codex/sessions; do
-    [ -d "$dir" ] || continue
-    n="$(find "$dir" -type f -name '*.jsonl' -mtime "+${days}" -print -delete | wc -l)"
-    [ "$n" -gt 0 ] && echo "[ccs] sessions: pruned $n transcript(s) older than ${days}d from $dir" >&2
-    find "$dir" -mindepth 1 -type d -empty -delete
-  done
-  return 0
+CLAUDE_SESSIONS_KEEP="${CCS_CLAUDE_SESSIONS_KEEP:-20}"
+CODEX_SESSIONS_KEEP="${CCS_CODEX_SESSIONS_KEEP:-10}"
+
+# prune_sessions DIR MARKER KEEP_NATIVE KEEP_COPIES [find options...]
+# A transcript whose first line contains MARKER is an OpenMemory copy. Deletes
+# everything past the newest KEEP_* of each kind (plus a Claude session's
+# <id>/ subagent dir) and prints the kept native paths, newest first.
+prune_sessions() {
+  dir="$1" marker="$2" keep_native="$3" keep_copy="$4"
+  shift 4
+  [ -d "$dir" ] || return 0
+  find "$dir" "$@" -type f -name '*.jsonl' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2- | {
+    natives=0 copies=0 pruned=0
+    while IFS= read -r f; do
+      if head -n 1 "$f" | grep -q "$marker"; then
+        copies=$((copies + 1))
+        [ "$copies" -le "$keep_copy" ] && continue
+      else
+        natives=$((natives + 1))
+        if [ "$natives" -le "$keep_native" ]; then printf '%s\n' "$f"; continue; fi
+      fi
+      rm -rf "$f" "${f%.jsonl}"
+      pruned=$((pruned + 1))
+    done
+    if [ "$pruned" -gt 0 ]; then
+      echo "[ccs] sessions: pruned $pruned transcript(s) from $dir" >&2
+    fi
+  }
+  find "$dir" -mindepth 1 -type d -empty -delete
+}
+
+# port_sessions FROM TO IDS — IDS is a whitespace-separated session id list.
+port_sessions() {
+  from="$1" to="$2" ids="$3"
+  [ -n "$ids" ] || return 0
+  set --
+  for id in $ids; do set -- "$@" --id "$id"; done
+  echo "[ccs] OpenMemory: syncing $from sessions to $to." >&2
+  if ! run_as_bun openmemory port --from "$from" --to "$to" "$@"; then
+    echo "[ccs] OpenMemory: $from to $to sync failed; continuing startup." >&2
+  fi
 }
 
 # The image links every tokless-installed package's skills into
@@ -345,17 +381,19 @@ if ! run_as_bun codex mcp get headroom >/dev/null 2>&1; then
   fi
 fi
 
-prune_old_sessions
+# Claude session id = file name. Codex = session_meta.session_id, which a child
+# thread shares with its parent, so it is not always the uuid in the file name.
+claude_ids="$(prune_sessions /home/bun/.claude/projects openmemorySource \
+  "$CLAUDE_SESSIONS_KEEP" "$CODEX_SESSIONS_KEEP" -mindepth 2 -maxdepth 2 |
+  while IFS= read -r f; do basename "$f" .jsonl; done)"
+codex_ids="$(prune_sessions /home/bun/.codex/sessions '"originator":"openmemory"' \
+  "$CODEX_SESSIONS_KEEP" "$CLAUDE_SESSIONS_KEEP" |
+  while IFS= read -r f; do
+    head -n 1 "$f" | grep -o '"session_id":"[^"]*"' | head -n 1 | cut -d'"' -f4
+  done | sort -u)"
 
-echo "[ccs] OpenMemory: syncing Claude sessions to Codex." >&2
-if ! run_as_bun openmemory port --from claude-code --to codex --all; then
-  echo "[ccs] OpenMemory: Claude to Codex sync failed; continuing startup." >&2
-fi
-
-echo "[ccs] OpenMemory: syncing Codex sessions to Claude." >&2
-if ! run_as_bun openmemory port --from codex --to claude-code --all; then
-  echo "[ccs] OpenMemory: Codex to Claude sync failed; continuing startup." >&2
-fi
+port_sessions claude-code codex "$claude_ids"
+port_sessions codex claude-code "$codex_ids"
 
 # Login reminders. A real claude setup-token value always starts with
 # sk-ant-oat01- — anything else is rejected by the `claude` CLI, which then
