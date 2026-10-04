@@ -91,7 +91,7 @@ uses, so a self-updated container and a rebuilt image run identical code.
 | `/home/bun/.openmemory` | OpenMemory state |
 | `/home/bun/.local/share/openmemory` | OpenMemory ledger/runtime state |
 | `/home/bun/.projectmem` | ProjectMem project registry |
-| `/home/bun/.headroom` | Headroom MCP state and retrieval cache |
+| `/home/bun/.headroom` | Headroom MCP session stats (the compression store is in memory) |
 
 ProjectMem and Headroom are added idempotently to the CCS, Codex and user-scope
 Claude (`~/.claude.json`) MCP config at container startup, so chat runs and
@@ -128,13 +128,13 @@ binary and its MCP servers live in an image layer and are unaffected.
 > `attempt to write a readonly database` and the project looks un-indexed. The
 > entrypoint's `chown -R` repairs it on the next container restart.
 
-Headroom is the opposite: memory is **global** and never per project. It runs in
-MCP-only mode (no proxy, dashboard or extra network port), and
-`HEADROOM_WORKSPACE_DIR` / `HEADROOM_MEMORY_DB_PATH` pin its store to
-`/home/bun/.headroom/memory.db` for every session, so opening a project never
-raises a "how should memory be scoped?" question. Headroom still prefers
-`<cwd>/.headroom/memory.db` when that file exists, so the entrypoint warns about
-any project-local store it finds under `WORKDIR` — delete it to stay global.
+Headroom runs in **MCP-only** mode: no proxy, dashboard or extra network port,
+and no Headroom memory (that feature belongs to `headroom proxy`). It offers
+on-demand `headroom_compress` / `headroom_retrieve` / `headroom_stats` only;
+nothing is compressed automatically, and a compressed hash is retrievable only
+within the MCP process that produced it. This differs from tokless, whose
+Headroom support (unreleased past v0.3.2) is proxy-only via
+`ANTHROPIC_BASE_URL=http://127.0.0.1:8787` and deliberately refuses MCP wiring.
 
 ## CI/CD
 

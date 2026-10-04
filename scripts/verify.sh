@@ -51,10 +51,6 @@ docker run --rm "$IMAGE" bash -lc '
   # repo must not delay the server), so poll instead of asserting immediately.
   timeout 300 bash -c "until [ -f /app/workspace/smoke-proj/.codegraph/codegraph.db ]; do sleep 2; done"
   echo "CodeGraph index test passed"
-  cd /app/workspace/smoke-proj
-  test "$(/opt/agent-tools/bin/python -c "from headroom.paths import memory_db_path as m; print(m())")" = /home/bun/.headroom/memory.db
-  test "$(/opt/agent-tools/bin/python -c "from headroom.cli.memory import _default_db_path as d; print(d())")" = /home/bun/.headroom/memory.db
-  echo "Headroom global memory test passed"
 '
 
 docker run --rm --user bun "$IMAGE" bash -lc '
