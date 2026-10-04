@@ -29,13 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/ccs-fetch.sh /usr/local/bin/ccs-fetch.sh
-COPY patches/ccs-sp-file.js /usr/local/share/ccs/ccs-sp-file.js
 
 # One definition of "a runnable CCS tree" — the entrypoint's startup updater
 # runs the same script, so a self-updated container and a rebuilt image are the
 # same code.
 RUN chmod 0755 /usr/local/bin/ccs-fetch.sh \
-    && ccs-fetch.sh /src "${CCS_REPO}" "${CCS_REF}" /usr/local/share/ccs/ccs-sp-file.js
+    && ccs-fetch.sh /src "${CCS_REPO}" "${CCS_REF}"
 
 WORKDIR /src
 
@@ -106,7 +105,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=ccs-builder /src/ ./
 COPY scripts/ccs-fetch.sh /usr/local/bin/ccs-fetch.sh
-COPY patches/ccs-sp-file.js /usr/local/share/ccs/ccs-sp-file.js
 RUN chmod 0755 /usr/local/bin/ccs-fetch.sh
 
 # Install agent CLIs as the non-root runtime user. npm itself is available in

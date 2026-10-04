@@ -16,7 +16,7 @@ ghcr.io/<owner>/claude-code-studio:latest-full
 The workflow also supports immutable release tags such as:
 
 ```text
-ghcr.io/<owner>/claude-code-studio:full-v7.16.2
+ghcr.io/<owner>/claude-code-studio:full-v7.18.3
 ```
 
 The package is created from this repository's GHCR publishing workflow; it does **not** depend on an existing `ghcr.io/lexus2016/claude-code-studio:latest` base image.
@@ -66,7 +66,7 @@ servers move with the image.
 | `CCS_REPO` | upstream CCS repository | Source to track |
 | `CCS_REF` | branch/tag baked at build time | A tag only moves when the tag does |
 
-The new tree is cloned, patched and installed in a temp directory and only then
+The new tree is cloned and installed in a temp directory and only then
 swapped into `/app`, so a failed clone or install leaves the running version
 alone. `/app/data`, `/app/workspace` and `/app/skills` are volumes and are never
 part of the swap. The update lives in the container's writable layer: it
@@ -151,8 +151,8 @@ A release automation in the CCS repository can notify this repository with a `re
 {
   "event_type": "ccs-release",
   "client_payload": {
-    "ccs_ref": "v7.16.2",
-    "version": "7.16.2"
+    "ccs_ref": "v7.18.3",
+    "version": "7.18.3"
   }
 }
 ```

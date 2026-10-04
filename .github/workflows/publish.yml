@@ -9,7 +9,7 @@ on:
         default: "main"
         type: string
       image_tag:
-        description: "Optional extra immutable tag (for example full-v7.16.2)"
+        description: "Optional extra immutable tag (for example full-v7.18.3)"
         required: false
         default: ""
         type: string

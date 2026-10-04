@@ -55,7 +55,7 @@ ccs_auto_update() {
   echo "[ccs] update: ${current:-unknown} -> ${remote} (${CCS_REF:-main}); installing." >&2
   rm -rf /tmp/ccs-update
   if ! run_as_bun /usr/local/bin/ccs-fetch.sh /tmp/ccs-update \
-         "$CCS_REPO" "${CCS_REF:-main}" /usr/local/share/ccs/ccs-sp-file.js >&2; then
+         "$CCS_REPO" "${CCS_REF:-main}" >&2; then
     echo "[ccs] update: failed; keeping the installed version." >&2
     rm -rf /tmp/ccs-update
     return 0
