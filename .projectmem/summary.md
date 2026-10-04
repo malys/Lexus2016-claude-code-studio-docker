@@ -1,6 +1,6 @@
 # projectmem - Lexus2016-claude-code-studio-docker
 
-_Last updated: 2026-09-20_
+_Last updated: 2026-10-04_
 
 ## Project purpose
 Replace this placeholder with a concise description of what this project does, who it serves, and the main technologies or runtime assumptions.
@@ -25,8 +25,6 @@ Replace this placeholder with a concise description of what this project does, w
 - CCS self-updates at container start: entrypoint compares /app/.ccs-revision against `git ls-remote CCS_REF CCS_REF^{}` (peeled, so a pinned tag does not loop) and, when it moved, rebuilds the tree in /tmp via the shared scripts/ccs-fetch.sh before swapping it into /app, keeping the data/workspace/skills volumes. Opt out with CCS_AUTO_UPDATE=0. The Dockerfile builder calls the same script so image and self-update produce identical code. [scripts/ccs-fetch.sh]
 
 ## Notes
-- update docker image name
-- add message
 - feat(docker): bundle ponytail, karpathy and caveman plugins
 - feat(docker): bundle ProjectMem and Headroom MCP servers
 - feat(entrypoint): prune agent sessions older than retention window
@@ -35,6 +33,8 @@ Replace this placeholder with a concise description of what this project does, w
 - Merge: feat(entrypoint): seed ProjectMem and Headroom MCP for user-scope Claude
 - chore(projectmem): track the project memory store
 - gotcha: `docker exec -ti claude-code-studio bash` lands as ROOT with HOME=/home/bun — running tokless/codegraph/claude there writes root-owned files into bun's home and into <project>/.codegraph, which the bun-owned server then reports as "attempt to write a readonly database". Use `docker exec -u bun`; the entrypoint chown -R heals it on the next restart. [scripts/docker-entrypoint.sh]
+- feat(entrypoint): update CCS from upstream at container start
+- Merge: fix(build): drop no-op tmux system-prompt patch
 
 ## Key files
 - `Dockerfile`

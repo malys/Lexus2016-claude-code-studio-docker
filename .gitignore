@@ -6,3 +6,6 @@
 .projectmem/watch.pid
 .projectmem/watch.log
 .projectmem/structure.json
+
+# Cross-agent delegation workspace
+.crosswork/
