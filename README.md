@@ -109,6 +109,13 @@ silently falling back to grep. The sweep runs in the background — a first inde
 of a large repo takes minutes and must not delay the server — and it skips any
 project that is already indexed. Set `CCS_CODEGRAPH_INDEX=0` to disable it.
 
+`CCS_AGENT_RULES` pins instructions every Claude and Codex session must get
+(for example "no heavy builds or test suites on this host"). At each start it
+is written at the top of `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, between
+`<!-- ccs-agent-rules:begin -->` / `:end -->` markers. A rule added by hand at the end of those
+files does not last: the tokless wiring that runs at startup rewrites everything
+below its own block. Unset the variable to remove the pinned block.
+
 The tokless-installed package skills (context-mode's `ctx-search`, `ctx-index`,
 `ctx-doctor`, …) are re-linked into `/home/bun/.claude/skills` and mirrored into
 `/app/skills` on every start. They are baked into the image, but both of those

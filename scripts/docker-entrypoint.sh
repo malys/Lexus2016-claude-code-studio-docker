@@ -219,6 +219,47 @@ if ! link_tokless_skills; then
   echo "[ccs] tokless: could not link package skills; ctx-* skills may be missing." >&2
 fi
 
+# CCS_AGENT_RULES: instructions every Claude and Codex session must get (e.g.
+# "no heavy builds/tests on this 12 GB host"). The tokless run above treats
+# everything from its first managed block to EOF as its own and rewrites it, so
+# a rule appended at the END of ~/.claude/CLAUDE.md (the file CCS's global
+# instructions editor opens) or ~/.codex/AGENTS.md is wiped on the next start.
+# Text ABOVE the managed blocks survives, so pin the rules there between
+# markers, refreshed on every start. Unset the variable to drop the block.
+pin_agent_rules() {
+  begin='<!-- ccs-agent-rules:begin -->'
+  end='<!-- ccs-agent-rules:end -->'
+  for file in /home/bun/.claude/CLAUDE.md /home/bun/.codex/AGENTS.md; do
+    [ -f "$file" ] || [ -n "${CCS_AGENT_RULES:-}" ] || continue
+    [ -f "$file" ] || : > "$file"
+    tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1
+    if {
+      if [ -n "${CCS_AGENT_RULES:-}" ]; then
+        printf '%s\n%s\n%s\n\n' "$begin" "$CCS_AGENT_RULES" "$end"
+      fi
+      awk -v b="$begin" -v e="$end" '
+        $0 == b { skip = 1; next }
+        skip && $0 == e { skip = 0; blank = 1; next }
+        skip { next }
+        blank && $0 == "" { blank = 0; next }
+        { blank = 0; print }
+      ' "$file"
+    } > "$tmp" && cat "$tmp" > "$file"; then
+      rm -f "$tmp"
+    else
+      rm -f "$tmp"
+      return 1
+    fi
+    if [ "$(id -u)" = "0" ]; then
+      chown bun:bun "$file"
+    fi
+  done
+}
+
+if ! pin_agent_rules; then
+  echo "[ccs] CCS_AGENT_RULES: could not pin agent rules; sessions may run without them." >&2
+fi
+
 # One definition of both MCP servers, shared by every registration below. CCS
 # passes its own config with --mcp-config, while a `claude` started from a
 # terminal or docker exec reads only ~/.claude.json; both must offer the same
