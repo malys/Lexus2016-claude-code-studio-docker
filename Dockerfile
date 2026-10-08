@@ -75,7 +75,7 @@ ENV CCS_ENV_PATH=/app/data/.env
 ENV CCS_REPO=${CCS_REPO}
 ENV CCS_REF=${CCS_REF}
 ENV HOME=/home/bun
-ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}
+ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}:/opt/agent-tools/bin
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -117,6 +117,9 @@ RUN python3 -m venv /opt/agent-tools \
          "projectmem==${PROJECTMEM_VERSION}" \
          "headroom-ai[mcp]==${HEADROOM_VERSION}"
 
+# Debian's /etc/profile resets PATH, so login shells (tmux panes, `bash -l`)
+# would lose the ENV PATH above. Re-export it from profile.d.
+RUN echo "export PATH=\"${PATH}\"" > /etc/profile.d/ccs-path.sh
 
 # Prepare user-scoped directories while still root so ownership can be set.
 RUN mkdir -p \
@@ -214,18 +217,13 @@ RUN touch /app/data/config.json \
     && chmod 600 /app/data/config.json \
     && touch /home/bun/.claude/.keep /home/bun/.codex/.keep
 
-# Build-time smoke test. Version commands are allowed to fail if an upstream
-# CLI changes its help output; command presence is the hard requirement.
-RUN command -v claude \
-    && command -v codex \
-    && command -v tokless \
-    && command -v rtk \
-    && command -v codegraph \
-    && command -v context-mode \
-    && command -v openmemory \
-    && command -v tmux \
-    && /opt/agent-tools/bin/pjm --help >/dev/null \
-    && /opt/agent-tools/bin/headroom --version \
+# Build-time smoke test. Every tool must resolve from PATH in both a plain
+# shell (CCS, docker exec) and a login shell (tmux, `bash -l`).
+RUN check='for t in claude codex node tokless rtk codegraph context-mode openmemory tmux pjm headroom; do command -v "$t" >/dev/null || { echo "not on PATH: $t" >&2; exit 1; }; done' \
+    && sh -c "$check" \
+    && bash -lc "$check" \
+    && pjm --help >/dev/null \
+    && headroom --version \
     && test -f /app/server.js \
     && test -s /app/.ccs-revision
 

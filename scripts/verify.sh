@@ -9,8 +9,8 @@ docker run --rm "$IMAGE" bash -lc '
   command -v codex
   command -v tokless
   command -v openmemory
-  /opt/agent-tools/bin/pjm --help >/dev/null
-  /opt/agent-tools/bin/headroom --version
+  pjm --help >/dev/null
+  headroom --version
   openmemory --help >/dev/null
   openmemory port --from claude-code --to codex --all >/dev/null
   openmemory port --from codex --to claude-code --all >/dev/null
@@ -45,7 +45,7 @@ docker run --rm "$IMAGE" bash -lc '
   printf "export const smoke = 1;\n" > /app/workspace/smoke-proj/index.js
   docker-entrypoint.sh true
   test -d /app/workspace/smoke-proj/.projectmem
-  gosu bun /opt/agent-tools/bin/pjm project list | grep -q smoke-proj
+  pjm project list | grep -q smoke-proj
   echo "ProjectMem registration test passed"
   # The CodeGraph sweep is backgrounded on purpose (a first index of a large
   # repo must not delay the server), so poll instead of asserting immediately.

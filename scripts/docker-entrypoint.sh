@@ -281,7 +281,7 @@ configure_ccs_mcp() {
   config_path="${CCS_CONFIG_PATH:-/app/data/config.json}"
   mkdir -p "$(dirname "$config_path")"
 
-  if [ ! -f "$config_path" ]; then
+  if [ ! -s "$config_path" ]; then
     if [ -f /app/config.example.json ]; then
       cp /app/config.example.json "$config_path"
     else
