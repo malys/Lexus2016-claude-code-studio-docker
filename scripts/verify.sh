@@ -18,12 +18,15 @@ docker run --rm "$IMAGE" bash -lc '
   command -v node
   test -f /app/server.js
   test -s /app/.ccs-revision
-  jq -e '\''.mcpServers.projectmem.command == "/opt/agent-tools/bin/python"'\'' /app/data/config.json >/dev/null
+  jq -e '\''.mcpServers.projectmem.args[2] == "projectmem"'\'' /app/data/config.json >/dev/null
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /app/data/config.json >/dev/null
   codex mcp get projectmem >/dev/null
   codex mcp get headroom >/dev/null
   jq -e '\''.hasCompletedOnboarding == true'\'' /home/bun/.claude.json >/dev/null
-  jq -e '\''.mcpServers.projectmem.command == "/opt/agent-tools/bin/python"'\'' /home/bun/.claude.json >/dev/null
+  jq -e '\''.mcpServers.projectmem.args[2] == "projectmem"'\'' /home/bun/.claude.json >/dev/null
+  # Headroom is MCP only: nothing may route traffic through the tokless proxy.
+  jq -e '\''.env.ANTHROPIC_BASE_URL != "http://127.0.0.1:8787"'\'' /home/bun/.claude/settings.json >/dev/null
+  if grep -q "^model_provider = \"headroom\"" /home/bun/.codex/config.toml; then exit 1; fi
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.projects["/app/workspace"].hasTrustDialogAccepted == true'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.skipDangerousModePermissionPrompt == true'\'' /home/bun/.claude/settings.json >/dev/null

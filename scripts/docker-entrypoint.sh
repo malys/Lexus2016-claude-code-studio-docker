@@ -210,8 +210,9 @@ link_tokless_skills() {
 # time. Those paths are usually bind-mounted from the host, which hides the
 # image's copy, so the tools read as "not installed" after a recreate. The tools
 # themselves live in ~/.local (image layer); re-run the idempotent wiring step
-# on every start so it lands in whatever config is mounted.
-if ! run_as_bun tokless --agents claude,codex >/dev/null 2>&1; then
+# on every start so it lands in whatever config is mounted. TOKLESS_TOOLS is set
+# in the Dockerfile, so build and start wire the same explicit tool list.
+if ! run_as_bun tokless --agents claude,codex --tools "$TOKLESS_TOOLS" >/dev/null 2>&1; then
   echo "[ccs] tokless: wiring failed; run 'tokless doctor' in the container." >&2
 fi
 
@@ -264,11 +265,12 @@ fi
 # passes its own config with --mcp-config, while a `claude` started from a
 # terminal or docker exec reads only ~/.claude.json; both must offer the same
 # two servers or a project is tracked in one kind of session and not the other.
+# ProjectMem is the exact entry tokless writes, so tokless and CCS agree on it.
 MCP_SERVERS_JSON='{
   "projectmem": {
     "type": "stdio",
-    "command": "/opt/agent-tools/bin/python",
-    "args": ["-m", "projectmem.mcp_server"]
+    "command": "/home/bun/.local/bin/tokless",
+    "args": ["run-mcp", "--tool", "projectmem", "/home/bun/.local/bin/pjm-mcp"]
   },
   "headroom": {
     "type": "stdio",
@@ -276,6 +278,13 @@ MCP_SERVERS_JSON='{
     "args": ["mcp", "serve"]
   }
 }'
+
+# Merge MCP_SERVERS_JSON under existing entries (a user's own entry wins), but
+# first drop the ProjectMem entry earlier images wrote: its runtime,
+# /opt/agent-tools/bin/python with projectmem, no longer exists, and keeping it
+# would leave every session with a dead server.
+MCP_MERGE_JQ='.mcpServers = ($servers + ((.mcpServers // {})
+  | with_entries(select(.value.command != "/opt/agent-tools/bin/python"))))'
 
 configure_ccs_mcp() {
   config_path="${CCS_CONFIG_PATH:-/app/data/config.json}"
@@ -290,8 +299,7 @@ configure_ccs_mcp() {
   fi
 
   config_tmp="$(mktemp "${config_path}.tmp.XXXXXX")"
-  if jq --argjson servers "$MCP_SERVERS_JSON" \
-       '.mcpServers = ($servers + (.mcpServers // {}))' \
+  if jq --argjson servers "$MCP_SERVERS_JSON" "$MCP_MERGE_JQ" \
        "$config_path" > "$config_tmp"; then
     chmod 0600 "$config_tmp"
     mv "$config_tmp" "$config_path"
@@ -343,6 +351,17 @@ CLAUDE_PRIVACY_JQ='
   .permissions.deny = ((.permissions.deny // []) + ["Read(./.env)", "Read(./secrets/**)"] | unique)
 '
 
+# Headroom runs as MCP only here. An earlier image let tokless route Claude and
+# Codex through its proxy (127.0.0.1:8787), and that wiring outlives the image in
+# the mounted configs; with no proxy running every request would fail. `tokless
+# disable --tools headroom` cannot be trusted to remove it (1.0.9 reports
+# "unwire failed: claude/headroom" and leaves Codex's provider in place), so
+# strip exactly what it wrote: this Claude env value, and the fenced Codex block
+# handled in configure_codex_privacy below.
+HEADROOM_UNPROXY_JQ='
+  if .env.ANTHROPIC_BASE_URL == "http://127.0.0.1:8787" then del(.env.ANTHROPIC_BASE_URL) else . end
+'
+
 configure_claude_onboarding() {
   workdir="${WORKDIR:-/app/workspace}"
   claude_config=/home/bun/.claude.json
@@ -360,7 +379,7 @@ configure_claude_onboarding() {
   if jq --argjson servers "$MCP_SERVERS_JSON" --args '
     .hasCompletedOnboarding = true |
     .theme //= "dark" |
-    .mcpServers = ($servers + (.mcpServers // {})) |
+    '"$MCP_MERGE_JQ"' |
     reduce $ARGS.positional[] as $dir (.; .projects[$dir].hasTrustDialogAccepted = true)
   ' "$@" < "$claude_config" > "$config_tmp" && cat "$config_tmp" > "$claude_config"; then
     rm -f "$config_tmp"
@@ -370,7 +389,7 @@ configure_claude_onboarding() {
   fi
 
   settings_tmp="$(mktemp "${claude_settings}.tmp.XXXXXX")"
-  if jq "$CLAUDE_PRIVACY_JQ" "$claude_settings" > "$settings_tmp" \
+  if jq "$CLAUDE_PRIVACY_JQ | $HEADROOM_UNPROXY_JQ" "$claude_settings" > "$settings_tmp" \
      && cat "$settings_tmp" > "$claude_settings"; then
     rm -f "$settings_tmp"
   else
@@ -391,11 +410,19 @@ fi
 # account-level "Improve the model for everyone" toggle lives on chatgpt.com.
 # TOML has no jq, so awk sets the key inside an existing [history] table or
 # appends the table; written in place for the same bind-mount reason as above.
+# The same pass drops tokless's fenced Headroom proxy provider (see
+# HEADROOM_UNPROXY_JQ).
 configure_codex_privacy() {
   codex_config=/home/bun/.codex/config.toml
   [ -f "$codex_config" ] || : > "$codex_config"
   codex_tmp="$(mktemp "${codex_config}.tmp.XXXXXX")"
   if awk '
+    /^# --- Headroom persistent provider ---$/ { skip = 1; held = "" }
+    skip {
+      held = held $0 "\n"
+      if ($0 ~ /^# --- end Headroom persistent provider ---$/) skip = 0
+      next
+    }
     /^[[:space:]]*\[/ {
       if (inh && !done) { print "persistence = \"none\""; done = 1 }
       inh = ($0 ~ /^[[:space:]]*\[history\][[:space:]]*(#.*)?$/)
@@ -405,6 +432,8 @@ configure_codex_privacy() {
     }
     { print }
     END {
+      # An unterminated fence is not ours to judge: put its lines back.
+      if (skip) printf "%s", held
       if (inh && !done) { print "persistence = \"none\""; done = 1 }
       if (!done) printf "\n[history]\npersistence = \"none\"\n"
     }
@@ -471,7 +500,7 @@ register_projectmem_projects() {
     if [ -f "$project/AGENTS.md" ] && [ ! -f "$project/CLAUDE.md" ]; then
       set -- "$@" --no-claude-md
     fi
-    if ! (cd "$project" && run_as_bun /opt/agent-tools/bin/pjm "$@" >/dev/null 2>&1); then
+    if ! (cd "$project" && run_as_bun /home/bun/.local/bin/pjm "$@" >/dev/null 2>&1); then
       echo "[ccs] ProjectMem: could not register $project; continuing startup." >&2
     fi
   done
@@ -514,13 +543,7 @@ if [ "${CCS_CODEGRAPH_INDEX:-1}" = "1" ] && [ -x /home/bun/.local/bin/codegraph 
   index_workspace_projects &
 fi
 
-if ! run_as_bun codex mcp get projectmem >/dev/null 2>&1; then
-  if ! run_as_bun codex mcp add projectmem -- \
-    /opt/agent-tools/bin/python -m projectmem.mcp_server >/dev/null; then
-    echo "[ccs] MCP: could not register ProjectMem in Codex; continuing startup." >&2
-  fi
-fi
-
+# ProjectMem is registered in Codex by tokless itself (TOKLESS_TOOLS).
 if ! run_as_bun codex mcp get headroom >/dev/null 2>&1; then
   if ! run_as_bun codex mcp add headroom -- \
     /opt/agent-tools/bin/headroom mcp serve >/dev/null; then

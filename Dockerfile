@@ -9,7 +9,6 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG CODEX_VERSION=latest
 ARG TOKLESS_REF=main
 ARG OPENMEMORY_REF=main
-ARG PROJECTMEM_VERSION=0.3.2
 ARG HEADROOM_VERSION=0.37.0
 
 # -----------------------------------------------------------------------------
@@ -58,7 +57,6 @@ ARG CLAUDE_CODE_VERSION
 ARG CODEX_VERSION
 ARG TOKLESS_REF
 ARG OPENMEMORY_REF
-ARG PROJECTMEM_VERSION
 ARG HEADROOM_VERSION
 ARG CCS_REPO
 ARG CCS_REF
@@ -110,11 +108,11 @@ RUN bun install -g \
 # Node-compatibility mode; a real node is only needed for native addons.
 RUN ln -s /usr/local/bin/bun /usr/local/bin/node
 
-# Local stdio MCP servers. Keep them in an image-owned venv so persistent
-# user config volumes cannot hide or replace their runtimes.
+# Headroom's stdio MCP server. Keep it in an image-owned venv so persistent
+# user config volumes cannot hide or replace its runtime. ProjectMem is
+# installed and wired by tokless (see TOKLESS_TOOLS below).
 RUN python3 -m venv /opt/agent-tools \
     && /opt/agent-tools/bin/pip install --no-cache-dir \
-         "projectmem==${PROJECTMEM_VERSION}" \
          "headroom-ai[mcp]==${HEADROOM_VERSION}"
 
 # Debian's /etc/profile resets PATH, so login shells (tmux panes, `bash -l`)
@@ -188,10 +186,18 @@ RUN git clone --depth 1 --branch "${OPENMEMORY_REF}" \
 # address"), so the installer exits non-zero after placing the binary. Ignore
 # that exit only; the wiring run below must succeed, and the smoke test checks
 # the tools it installs.
+# TOKLESS_TOOLS is an explicit list so a tool added upstream never lands in the
+# image unchosen; the entrypoint re-wires the same list on every start.
+# - headroom is left out: its tokless integration is proxy-only (routes all
+#   traffic through 127.0.0.1:8787); this image runs Headroom as MCP only.
+# - ponytail is left out: the bundled ponytail plugin already injects the same
+#   rules on Claude and Codex, so a second copy in CLAUDE.md/AGENTS.md would
+#   only double the per-session token cost.
 ARG TOKLESS_REF
+ENV TOKLESS_TOOLS=rtk,caveman,principles,codegraph,context-mode,projectmem
 RUN curl -fsSL -o /tmp/install.sh "https://raw.githubusercontent.com/HoangP8/tokless/${TOKLESS_REF}/scripts/install.sh" \
     && { bash /tmp/install.sh || true; } \
-    && tokless --agents claude,codex \
+    && tokless --agents claude,codex --tools "${TOKLESS_TOOLS}" \
     && rm -f /tmp/install.sh
 
 # tokless's installer skips a TTY-dependent setup step in an unattended

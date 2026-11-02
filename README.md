@@ -47,9 +47,9 @@ The image runs as the `bun` user. Credentials are not baked into the image; auth
 - Claude Code CLI
 - OpenAI Codex CLI
 - `tmux` for terminal/subscription engine support
-- `tokless` configured for Claude Code and Codex
+- `tokless` configured for Claude Code and Codex, with an explicit tool list (`TOKLESS_TOOLS`)
 - OpenMemory CLI for Claude Code/Codex session portability
-- ProjectMem MCP for project-scoped persistent memory
+- ProjectMem MCP for project-scoped persistent memory (installed and wired by tokless)
 - Headroom MCP for on-demand context compression and retrieval
 - CCS itself, fetched from the upstream `Lexus2016/claude-code-studio` repository
 
@@ -96,7 +96,16 @@ uses, so a self-updated container and a rebuilt image run identical code.
 ProjectMem and Headroom are added idempotently to the CCS, Codex and user-scope
 Claude (`~/.claude.json`) MCP config at container startup, so chat runs and
 terminal / `docker exec` sessions reach both servers. Existing entries with the
-same names are preserved.
+same names are preserved, except the ProjectMem entry of earlier images
+(`/opt/agent-tools/bin/python`), whose runtime no longer exists and is replaced.
+
+tokless wires only the tools in `TOKLESS_TOOLS` (default
+`rtk,caveman,principles,codegraph,context-mode,projectmem`), at build and on
+every start. `headroom` is left out because its tokless integration is the
+proxy (see below); `ponytail` is left out because the bundled ponytail plugin
+already injects the same rules, and two copies would double the per-session
+token cost. tokless owns ProjectMem: it injects the project memory at session
+start (`SessionStart` hook) and exposes only its write tools.
 
 Every directory under `WORKDIR` is registered with ProjectMem (`pjm init
 --no-watch`) at startup, so each project has its own memory; a project added
@@ -140,8 +149,12 @@ and no Headroom memory (that feature belongs to `headroom proxy`). It offers
 on-demand `headroom_compress` / `headroom_retrieve` / `headroom_stats` only;
 nothing is compressed automatically, and a compressed hash is retrievable only
 within the MCP process that produced it. This differs from tokless, whose
-Headroom support (unreleased past v0.3.2) is proxy-only via
-`ANTHROPIC_BASE_URL=http://127.0.0.1:8787` and deliberately refuses MCP wiring.
+Headroom support is proxy-only via `ANTHROPIC_BASE_URL=http://127.0.0.1:8787`
+and deliberately refuses MCP wiring. Volumes from an image that let tokless wire
+that proxy are cleaned at startup: the entrypoint removes exactly that
+`ANTHROPIC_BASE_URL` value from `~/.claude/settings.json` and the fenced
+`# --- Headroom persistent provider ---` block from `~/.codex/config.toml`
+(`tokless disable --tools headroom` does not remove them reliably as of 1.0.9).
 
 ## CI/CD
 
@@ -175,7 +188,6 @@ docker build \
   --build-arg CODEX_VERSION=latest \
   --build-arg TOKLESS_REF=main \
   --build-arg OPENMEMORY_REF=main \
-  --build-arg PROJECTMEM_VERSION=0.3.2 \
   --build-arg HEADROOM_VERSION=0.37.0 \
   -t ccs-full:local .
 ```
