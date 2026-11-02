@@ -75,9 +75,13 @@ ENV CCS_REF=${CCS_REF}
 ENV HOME=/home/bun
 ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}:/opt/agent-tools/bin
 
+# libatomic1: the Node.js that tokless downloads (v26) links against
+# libatomic.so.1. Without it every tokless npm install (codegraph,
+# context-mode) fails while tokless itself still exits 0.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    libatomic1 \
     git \
     jq \
     tmux \
