@@ -327,6 +327,22 @@ fi
 # CCS reports "interactive session went idle without producing a reply". So seed
 # WORKDIR and every project directory below it. A project added after startup
 # needs a container restart to be seeded.
+# Privacy: no telemetry, error reports, /bug uploads or feedback surveys, and
+# keep secrets out of reads. The account-level "Help improve Claude" toggle has
+# no local override; it must be turned off on claude.ai. Re-applied on every
+# start so a settings.json edited by hand (or by `claude`) cannot drift back.
+CLAUDE_PRIVACY_JQ='
+  .skipDangerousModePermissionPrompt = true |
+  .env = ((.env // {}) + {
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    DISABLE_TELEMETRY: "1",
+    DISABLE_ERROR_REPORTING: "1",
+    DISABLE_BUG_COMMAND: "1",
+    CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1"
+  }) |
+  .permissions.deny = ((.permissions.deny // []) + ["Read(./.env)", "Read(./secrets/**)"] | unique)
+'
+
 configure_claude_onboarding() {
   workdir="${WORKDIR:-/app/workspace}"
   claude_config=/home/bun/.claude.json
@@ -354,7 +370,7 @@ configure_claude_onboarding() {
   fi
 
   settings_tmp="$(mktemp "${claude_settings}.tmp.XXXXXX")"
-  if jq '.skipDangerousModePermissionPrompt = true' "$claude_settings" > "$settings_tmp" \
+  if jq "$CLAUDE_PRIVACY_JQ" "$claude_settings" > "$settings_tmp" \
      && cat "$settings_tmp" > "$claude_settings"; then
     rm -f "$settings_tmp"
   else
@@ -370,6 +386,69 @@ configure_claude_onboarding() {
 if ! configure_claude_onboarding; then
   echo "[ccs] Claude: first-run prompts not pre-accepted; interactive sessions may hang." >&2
 fi
+
+# Codex: no local transcript history ([history] persistence = "none"). The
+# account-level "Improve the model for everyone" toggle lives on chatgpt.com.
+# TOML has no jq, so awk sets the key inside an existing [history] table or
+# appends the table; written in place for the same bind-mount reason as above.
+configure_codex_privacy() {
+  codex_config=/home/bun/.codex/config.toml
+  [ -f "$codex_config" ] || : > "$codex_config"
+  codex_tmp="$(mktemp "${codex_config}.tmp.XXXXXX")"
+  if awk '
+    /^[[:space:]]*\[/ {
+      if (inh && !done) { print "persistence = \"none\""; done = 1 }
+      inh = ($0 ~ /^[[:space:]]*\[history\][[:space:]]*(#.*)?$/)
+    }
+    inh && /^[[:space:]]*persistence[[:space:]]*=/ {
+      if (!done) print "persistence = \"none\""; done = 1; next
+    }
+    { print }
+    END {
+      if (inh && !done) { print "persistence = \"none\""; done = 1 }
+      if (!done) printf "\n[history]\npersistence = \"none\"\n"
+    }
+  ' "$codex_config" > "$codex_tmp" && cat "$codex_tmp" > "$codex_config"; then
+    rm -f "$codex_tmp"
+  else
+    rm -f "$codex_tmp"
+    return 1
+  fi
+  if [ "$(id -u)" = "0" ]; then
+    chown bun:bun "$codex_config"
+  fi
+}
+
+configure_codex_privacy || true
+
+# Verify, don't assume: a failed write above only warns, so say loudly which
+# privacy setting is NOT in effect for this run.
+verify_privacy() {
+  ok=0
+  if ! jq -e '
+      .env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC == "1" and
+      .env.DISABLE_TELEMETRY == "1" and
+      .env.DISABLE_ERROR_REPORTING == "1" and
+      .env.DISABLE_BUG_COMMAND == "1" and
+      .env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY == "1" and
+      (.permissions.deny | index("Read(./.env)") and index("Read(./secrets/**)"))
+    ' /home/bun/.claude/settings.json >/dev/null 2>&1; then
+    echo "[ccs] PRIVACY: Claude telemetry/feedback settings NOT applied in ~/.claude/settings.json." >&2
+    ok=1
+  fi
+  if ! awk '
+      /^[[:space:]]*\[/ { inh = ($0 ~ /^[[:space:]]*\[history\][[:space:]]*(#.*)?$/) }
+      inh && /^[[:space:]]*persistence[[:space:]]*=[[:space:]]*"none"/ { found = 1 }
+      END { exit !found }
+    ' /home/bun/.codex/config.toml 2>/dev/null; then
+    echo "[ccs] PRIVACY: Codex [history] persistence = \"none\" NOT applied in ~/.codex/config.toml." >&2
+    ok=1
+  fi
+  [ "$ok" = 0 ] && echo "[ccs] Privacy: Claude telemetry off, Codex history off. Also disable model training on claude.ai and chatgpt.com." >&2
+  return 0
+}
+
+verify_privacy
 
 # One ProjectMem MCP server serves every project, but only projects in the
 # registry (~/.projectmem) can be named on a call. `pjm init` creates

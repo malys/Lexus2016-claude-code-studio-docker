@@ -27,6 +27,9 @@ docker run --rm "$IMAGE" bash -lc '
   jq -e '\''.mcpServers.headroom.args == ["mcp", "serve"]'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.projects["/app/workspace"].hasTrustDialogAccepted == true'\'' /home/bun/.claude.json >/dev/null
   jq -e '\''.skipDangerousModePermissionPrompt == true'\'' /home/bun/.claude/settings.json >/dev/null
+  jq -e '\''.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC == "1" and .env.DISABLE_TELEMETRY == "1" and .env.DISABLE_ERROR_REPORTING == "1" and .env.DISABLE_BUG_COMMAND == "1" and .env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY == "1"'\'' /home/bun/.claude/settings.json >/dev/null
+  jq -e '\''.permissions.deny | index("Read(./.env)") and index("Read(./secrets/**)")'\'' /home/bun/.claude/settings.json >/dev/null
+  grep -A20 "^\[history\]" /home/bun/.codex/config.toml | grep -q "^persistence = \"none\""
   # The tokless package skills are re-linked by the entrypoint, not only at
   # build time — a named volume from an older image never gets the image copy.
   test -L /home/bun/.claude/skills/ctx-search
