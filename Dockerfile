@@ -78,6 +78,8 @@ ENV PATH=/home/bun/.local/bin:/home/bun/.bun/bin:${PATH}:/opt/agent-tools/bin
 # libatomic1: the Node.js that tokless downloads (v26) links against
 # libatomic.so.1. Without it every tokless npm install (codegraph,
 # context-mode) fails while tokless itself still exits 0.
+# gh authenticates from GH_TOKEN at runtime; the system credential helper lets
+# plain `git push/clone` over https://github.com use the same token.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -86,12 +88,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     tmux \
     ripgrep \
+    gh \
+    sqlite3 \
       openssh-client \
       procps \
       gosu \
       python3 \
       python3-venv \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
 
 # Copy the complete CCS runtime tree. The builder already installed production
 # dependencies; retaining the upstream layout avoids accidentally omitting a
@@ -229,7 +234,7 @@ RUN touch /app/data/config.json \
 
 # Build-time smoke test. Every tool must resolve from PATH in both a plain
 # shell (CCS, docker exec) and a login shell (tmux, `bash -l`).
-RUN check='for t in claude codex node tokless rtk codegraph context-mode openmemory tmux pjm headroom; do command -v "$t" >/dev/null || { echo "not on PATH: $t" >&2; exit 1; }; done' \
+RUN check='for t in claude codex node tokless rtk codegraph context-mode openmemory tmux pjm headroom gh sqlite3; do command -v "$t" >/dev/null || { echo "not on PATH: $t" >&2; exit 1; }; done' \
     && sh -c "$check" \
     && bash -lc "$check" \
     && pjm --help >/dev/null \

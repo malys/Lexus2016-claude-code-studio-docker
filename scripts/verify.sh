@@ -16,6 +16,9 @@ docker run --rm "$IMAGE" bash -lc '
   openmemory port --from codex --to claude-code --all >/dev/null
   command -v tmux
   command -v node
+  command -v gh
+  command -v sqlite3
+  test "$(git config --system credential.https://github.com.helper)" = "!/usr/bin/gh auth git-credential"
   test -f /app/server.js
   test -s /app/.ccs-revision
   jq -e '\''.mcpServers.projectmem.args[2] == "projectmem"'\'' /app/data/config.json >/dev/null

@@ -42,11 +42,14 @@ docker run -d \
 
 The image runs as the `bun` user. Credentials are not baked into the image; authenticate the CLIs at runtime using the mechanisms documented by the respective providers.
 
+GitHub: set `GH_TOKEN` (add `-e GH_TOKEN=...`, or put it in `.env` for Compose). `gh` reads it directly, and the image's git credential helper reuses it for `git clone/push` over `https://github.com`. Prefer a fine-grained token limited to the repositories the agents may touch.
+
 ## What is included
 
 - Claude Code CLI
 - OpenAI Codex CLI
 - `tmux` for terminal/subscription engine support
+- GitHub CLI (`gh`) and `sqlite3`
 - `tokless` configured for Claude Code and Codex, with an explicit tool list (`TOKLESS_TOOLS`)
 - OpenMemory CLI for Claude Code/Codex session portability
 - ProjectMem MCP for project-scoped persistent memory (installed and wired by tokless)

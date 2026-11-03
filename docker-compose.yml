@@ -51,6 +51,10 @@ services:
       # device-code sign-in enabled on the account/workspace). See the
       # entrypoint's startup log for the fallback if that's not enabled.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # GitHub auth for `gh` and for git over https://github.com (credential
+      # helper set in the image). Use a fine-grained PAT scoped to the repos
+      # the agents may touch.
+      - GH_TOKEN=${GH_TOKEN:-}
     volumes:
       - ./ccs/data/app:/app/data
       - ./ccs/data/workspace:/app/workspace
